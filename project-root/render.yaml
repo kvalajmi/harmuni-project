@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: harmuni-app
+    env: node
+    rootDir: project-root
+    buildCommand: 'npm install --prefix frontend && npm run build --prefix frontend && npm install --prefix backend'
+    startCommand: 'npm run start --prefix backend'
+    envVars:
+      - key: NODE_ENV
+        value: production

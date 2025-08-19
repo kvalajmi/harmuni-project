@@ -1,0 +1,42 @@
+{
+  "name": "whatsapp-bulk-backend",
+  "version": "1.0.0",
+  "description": "WhatsApp Bulk Messaging Backend System",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "echo 'Build step - copy files if needed'"
+  },
+  "keywords": [
+    "whatsapp",
+    "bulk-messaging",
+    "nodejs",
+    "express",
+    "socket.io"
+  ],
+  "author": "WhatsApp Bulk System",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "whatsapp-web.js": "^1.24.0",
+    "multer": "^2.0.0-rc.4",
+    "xlsx": "^0.18.5",
+    "p-queue": "^7.4.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.2.0",
+    "libphonenumber-js": "^1.10.58",
+    "qrcode": "^1.5.3",
+    "fs-extra": "^11.2.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
