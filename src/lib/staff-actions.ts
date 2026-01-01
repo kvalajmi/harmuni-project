@@ -453,12 +453,14 @@ export interface EmployeeProfile {
 export interface EmployeeTask {
     id: string
     task_id: string
+    user_id: string
     task_title: string
     task_description: string | null
     status: string
     assigned_at: string
     updated_at: string
     completed_at: string | null
+    reminder_sent_at: string | null
     response_note: string | null
     comments: {
         id: string
@@ -533,10 +535,12 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
             .select(`
                 id,
                 task_id,
+                user_id,
                 status,
                 response_note,
                 assigned_at,
                 updated_at,
+                reminder_sent_at,
                 task:tasks(id, title, description, created_at)
             `)
             .eq('user_id', employeeId)
@@ -579,12 +583,14 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
             const employeeTask: EmployeeTask = {
                 id: a.id,
                 task_id: a.task_id,
+                user_id: a.user_id,
                 task_title: task.title,
                 task_description: task.description,
                 status: a.status,
                 assigned_at: a.assigned_at,
                 updated_at: a.updated_at,
                 completed_at: a.status === 'completed' ? a.updated_at : null,
+                reminder_sent_at: (a as any).reminder_sent_at || null,
                 response_note: a.response_note,
                 comments: taskComments.map(c => ({
                     id: c.id,
@@ -685,3 +691,65 @@ export async function markAssignmentCompletedAction(assignmentId: string): Promi
     }
 }
 
+// Send task reminder email
+export async function sendTaskReminderAction(
+    assignmentId: string,
+    employeeId: string,
+    taskTitle: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Get employee email from auth
+        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
+        const user = users?.find(u => u.id === employeeId)
+
+        if (!user?.email) {
+            return { success: false, error: 'البريد الإلكتروني غير موجود' }
+        }
+
+        // Get employee name
+        const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('full_name')
+            .eq('id', employeeId)
+            .single()
+
+        const employeeName = profile?.full_name || 'الموظف'
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+        // Import sendTaskEmail dynamically to avoid circular dependency
+        const { sendTaskEmail } = await import('./email')
+
+        // Send reminder email
+        await sendTaskEmail({
+            to: user.email,
+            recipientName: employeeName,
+            taskTitle: `تذكير: ${taskTitle}`,
+            taskDescription: 'لديك مهمة معلقة تحتاج إلى إنجازها. يرجى مراجعة المهمة والرد عليها في أقرب وقت.',
+            priority: 'high',
+            assignerName: 'مدير النظام',
+            dashboardUrl: `${appUrl}/dashboard`
+        })
+
+        // Update assignment with reminder timestamp
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                reminder_sent_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        // Create notification
+        await supabaseAdmin.from('notifications').insert({
+            user_id: employeeId,
+            message: `تذكير: لديك مهمة معلقة "${taskTitle}"`,
+            is_read: false
+        })
+
+        revalidatePath('/dashboard')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Send task reminder error:', error)
+        return { success: false, error: 'فشل في إرسال التذكير' }
+    }
+}

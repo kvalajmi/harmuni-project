@@ -6,31 +6,20 @@ const supabase = createClient(
 );
 
 async function resetPassword() {
-    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
-    if (listError) {
-        console.error('Error:', listError);
-        return;
-    }
-
+    const { data: { users } } = await supabase.auth.admin.listUsers();
     const user = users.find(u => u.email?.toLowerCase() === 'kvalajmi@gmail.com');
-    if (!user) {
-        console.log('User not found');
-        return;
-    }
+    if (!user) { console.log('User not found'); return; }
 
-    console.log('Found user:', user.id);
-
-    const newPassword = 'Admin@2026';
-    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
-        password: newPassword
+    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+        password: '6666703866'
     });
 
-    if (updateError) {
-        console.error('Update error:', updateError);
+    if (error) {
+        console.error('Error:', error);
     } else {
-        console.log('✅ Password reset successful!');
-        console.log('Email: Kvalajmi@gmail.com');
-        console.log('New Password:', newPassword);
+        console.log('Password updated successfully');
+        console.log('Email: kvalajmi@gmail.com');
+        console.log('Password: 6666703866');
     }
 }
 

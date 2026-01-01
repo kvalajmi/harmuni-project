@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { getEmployeeProfileAction, markAssignmentCompletedAction, EmployeeProfileData, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
+import { getEmployeeProfileAction, markAssignmentCompletedAction, sendTaskReminderAction, EmployeeProfileData, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
 
 type TabType = 'active' | 'completed' | 'circulars'
 
@@ -61,13 +61,15 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
 
     const formatDateTime = (dateString: string) => {
         const date = new Date(dateString)
-        return date.toLocaleDateString('ar-SA', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        })
+        const day = date.getDate()
+        const month = date.getMonth() + 1
+        const year = date.getFullYear()
+        let hours = date.getHours()
+        const minutes = date.getMinutes().toString().padStart(2, '0')
+        const ampm = hours >= 12 ? 'م' : 'ص'
+        hours = hours % 12
+        hours = hours ? hours : 12 // 0 becomes 12
+        return `${day}/${month}/${year} - ${hours}:${minutes} ${ampm}`
     }
 
     const getStatusBadge = (status: string) => {
@@ -282,6 +284,14 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                         <span>أُكملت: {formatDateTime(task.completed_at)}</span>
                     </div>
                 )}
+                {task.reminder_sent_at && (
+                    <div className="flex items-center gap-2 text-orange-500">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <span>تذكير: {formatDateTime(task.reminder_sent_at)}</span>
+                    </div>
+                )}
             </div>
 
             {/* Comments */}
@@ -318,7 +328,7 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
 
             {/* Actions */}
             {!showCompleted && onMarkCompleted && (
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex gap-2 flex-wrap">
                     <Button
                         size="sm"
                         onClick={() => onMarkCompleted(task.id)}
@@ -328,6 +338,22 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         قبول وإكمال
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                            const result = await sendTaskReminderAction(task.id, task.user_id, task.task_title)
+                            if (result.success) {
+                                window.location.reload()
+                            }
+                        }}
+                        className="border-orange-500 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10"
+                    >
+                        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        تذكير
                     </Button>
                 </div>
             )}
