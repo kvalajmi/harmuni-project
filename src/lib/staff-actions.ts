@@ -438,3 +438,250 @@ export async function markNotificationReadAction(notificationId: string): Promis
         return { success: false }
     }
 }
+
+// ============== EMPLOYEE PROFILE ==============
+
+export interface EmployeeProfile {
+    id: string
+    full_name: string | null
+    email: string
+    role: string
+    created_at: string
+    groups: { id: string; name: string }[]
+}
+
+export interface EmployeeTask {
+    id: string
+    task_id: string
+    task_title: string
+    task_description: string | null
+    status: string
+    assigned_at: string
+    updated_at: string
+    completed_at: string | null
+    response_note: string | null
+    comments: {
+        id: string
+        content: string
+        user_name: string
+        user_role: string
+        created_at: string
+    }[]
+}
+
+export interface EmployeeCircular {
+    id: string
+    circular_id: string
+    title: string
+    content: string
+    is_read: boolean
+    read_at: string | null
+    created_at: string
+    sender_name: string
+}
+
+export interface EmployeeProfileData {
+    profile: EmployeeProfile
+    activeTasks: EmployeeTask[]
+    completedTasks: EmployeeTask[]
+    circulars: EmployeeCircular[]
+    stats: {
+        activeCount: number
+        completedCount: number
+        circularCount: number
+        unreadCircularCount: number
+    }
+}
+
+export async function getEmployeeProfileAction(employeeId: string): Promise<EmployeeProfileData | null> {
+    try {
+        // 1. Get employee profile
+        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+        const authUser = authUsers?.find(u => u.id === employeeId)
+
+        if (!authUser) return null
+
+        const { data: profileData } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, role, created_at')
+            .eq('id', employeeId)
+            .single()
+
+        // Get groups
+        const { data: memberships } = await supabaseAdmin
+            .from('group_members')
+            .select('group:groups(id, name)')
+            .eq('user_id', employeeId)
+
+        const groups = memberships?.map(m => {
+            const group = m.group as unknown as { id: string; name: string } | null
+            return group ? { id: group.id, name: group.name } : null
+        }).filter(Boolean) as { id: string; name: string }[] || []
+
+        const profile: EmployeeProfile = {
+            id: employeeId,
+            full_name: profileData?.full_name || null,
+            email: authUser.email || '',
+            role: profileData?.role || 'member',
+            created_at: profileData?.created_at || authUser.created_at,
+            groups
+        }
+
+        // 2. Get all task assignments for this employee
+        const { data: assignments } = await supabaseAdmin
+            .from('task_assignments')
+            .select(`
+                id,
+                task_id,
+                status,
+                response_note,
+                assigned_at,
+                updated_at,
+                task:tasks(id, title, description, created_at)
+            `)
+            .eq('user_id', employeeId)
+            .order('assigned_at', { ascending: false })
+
+        // Get all comments for these tasks
+        const taskIds = assignments?.map(a => a.task_id) || []
+        const { data: allComments } = await supabaseAdmin
+            .from('task_comments')
+            .select('id, task_id, user_id, content, created_at')
+            .in('task_id', taskIds)
+            .order('created_at', { ascending: true })
+
+        // Get commenter profiles
+        const commenterIds = [...new Set(allComments?.map(c => c.user_id) || [])]
+        const { data: commenterProfiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, role')
+            .in('id', commenterIds)
+
+        const commenterMap = new Map(commenterProfiles?.map(p => [p.id, { name: p.full_name, role: p.role }]) || [])
+
+        // Group comments by task
+        const commentsByTask = new Map<string, typeof allComments>()
+        allComments?.forEach(c => {
+            const existing = commentsByTask.get(c.task_id) || []
+            existing.push(c)
+            commentsByTask.set(c.task_id, existing)
+        })
+
+        // Process tasks
+        const activeTasks: EmployeeTask[] = []
+        const completedTasks: EmployeeTask[] = []
+
+        assignments?.forEach(a => {
+            const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
+            if (!task) return
+
+            const taskComments = commentsByTask.get(a.task_id) || []
+            const employeeTask: EmployeeTask = {
+                id: a.id,
+                task_id: a.task_id,
+                task_title: task.title,
+                task_description: task.description,
+                status: a.status,
+                assigned_at: a.assigned_at,
+                updated_at: a.updated_at,
+                completed_at: a.status === 'completed' ? a.updated_at : null,
+                response_note: a.response_note,
+                comments: taskComments.map(c => ({
+                    id: c.id,
+                    content: c.content,
+                    user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
+                    user_role: commenterMap.get(c.user_id)?.role || 'member',
+                    created_at: c.created_at
+                }))
+            }
+
+            if (a.status === 'completed') {
+                completedTasks.push(employeeTask)
+            } else {
+                activeTasks.push(employeeTask)
+            }
+        })
+
+        // 3. Get circulars for this employee
+        const { data: circularRecipients } = await supabaseAdmin
+            .from('circular_recipients')
+            .select(`
+                id,
+                circular_id,
+                is_read,
+                read_at,
+                created_at,
+                circular:circulars(id, title, content, created_by, created_at)
+            `)
+            .eq('user_id', employeeId)
+            .order('created_at', { ascending: false })
+
+        // Get sender names
+        const senderIds = [...new Set(circularRecipients?.map(r => {
+            const c = r.circular as unknown as { created_by: string } | null
+            return c?.created_by
+        }).filter(Boolean) || [])]
+
+        const { data: senderProfiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', senderIds)
+
+        const senderMap = new Map(senderProfiles?.map(p => [p.id, p.full_name]) || [])
+
+        const circulars: EmployeeCircular[] = circularRecipients?.map(r => {
+            const c = r.circular as unknown as { id: string; title: string; content: string; created_by: string; created_at: string } | null
+            if (!c) return null
+            return {
+                id: r.id,
+                circular_id: r.circular_id,
+                title: c.title,
+                content: c.content,
+                is_read: r.is_read,
+                read_at: r.read_at,
+                created_at: r.created_at,
+                sender_name: senderMap.get(c.created_by) || 'مدير النظام'
+            }
+        }).filter(Boolean) as EmployeeCircular[] || []
+
+        // 4. Calculate stats
+        const stats = {
+            activeCount: activeTasks.length,
+            completedCount: completedTasks.length,
+            circularCount: circulars.length,
+            unreadCircularCount: circulars.filter(c => !c.is_read).length
+        }
+
+        return {
+            profile,
+            activeTasks,
+            completedTasks,
+            circulars,
+            stats
+        }
+
+    } catch (error) {
+        console.error('Get employee profile error:', error)
+        return null
+    }
+}
+
+// Mark assignment as completed (admin action)
+export async function markAssignmentCompletedAction(assignmentId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'completed',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        revalidatePath('/dashboard')
+        return { success: true }
+    } catch (error) {
+        console.error('Mark assignment completed error:', error)
+        return { success: false }
+    }
+}
+

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -110,17 +111,17 @@ export default function StaffPage() {
                                 {employees.map((emp) => (
                                     <TableRow key={emp.id} className="border-slate-200 dark:border-slate-700/50">
                                         <TableCell>
-                                            <div className="flex items-center gap-3">
+                                            <Link href={`/dashboard/staff/${emp.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
                                                 <Avatar className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600">
                                                     <AvatarFallback className="bg-transparent text-white font-semibold">
                                                         {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div>
-                                                    <p className="font-medium text-slate-900 dark:text-white">{emp.full_name || 'بدون اسم'}</p>
+                                                    <p className="font-medium text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400">{emp.full_name || 'بدون اسم'}</p>
                                                     <p className="text-sm text-slate-500 dark:text-slate-400">{emp.email}</p>
                                                 </div>
-                                            </div>
+                                            </Link>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant={emp.role === 'admin' ? 'default' : 'secondary'}
