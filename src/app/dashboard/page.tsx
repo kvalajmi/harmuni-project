@@ -9,7 +9,7 @@ import { Profile, Task, TaskAssignment, Notification } from '@/lib/supabase'
 import { CreateTaskDrawer } from '@/components/create-task-drawer'
 import { CreateCircularDrawer } from '@/components/create-circular-drawer'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { getAssignedTasksAction, getNotificationsAction, markNotificationReadAction, AssignedTask, getCreatedTasksAction } from '@/lib/staff-actions'
+import { getAssignedTasksAction, getNotificationsAction, markNotificationReadAction, AssignedTask, getCreatedTasksAction, getEmployeesAction, Employee } from '@/lib/staff-actions'
 import { getAdminCircularsAction, getStaffCircularsAction, Circular } from '@/lib/circular-actions'
 import {
     HomeTabSkeleton,
@@ -20,7 +20,7 @@ import {
 } from '@/components/skeletons'
 
 // Tab types
-type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'profile'
+type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'employees' | 'profile'
 
 // Staff circular type with read status
 interface StaffCircular extends Circular {
@@ -48,6 +48,7 @@ export default function DashboardPage() {
     const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [circulars, setCirculars] = useState<(Circular | StaffCircular)[]>([])
+    const [employees, setEmployees] = useState<Employee[]>([])
     const [showCreateTask, setShowCreateTask] = useState(false)
     const [showCreateCircular, setShowCreateCircular] = useState(false)
     const router = useRouter()
@@ -124,6 +125,10 @@ export default function DashboardPage() {
             if (profileData?.role === 'admin') {
                 const adminCirculars = await getAdminCircularsAction(user.id)
                 setCirculars(adminCirculars)
+
+                // Load employees for admin (for follow-up tab)
+                const employeesData = await getEmployeesAction()
+                setEmployees(employeesData)
             } else {
                 const staffCirculars = await getStaffCircularsAction(user.id)
                 setCirculars(staffCirculars)
@@ -248,6 +253,9 @@ export default function DashboardPage() {
                         {activeTab === 'notifications' && (
                             <NotificationsTab notifications={notifications} onRefresh={loadData} />
                         )}
+                        {activeTab === 'employees' && profile?.role === 'admin' && (
+                            <EmployeesTab employees={employees} />
+                        )}
                         {activeTab === 'profile' && (
                             <ProfileTab user={user} profile={profile} onSignOut={handleSignOut} />
                         )}
@@ -285,6 +293,14 @@ export default function DashboardPage() {
                         onClick={() => setActiveTab('notifications')}
                         badge={unreadNotifications > 0 ? unreadNotifications : undefined}
                     />
+                    {profile?.role === 'admin' && (
+                        <NavItem
+                            icon={<EmployeesIcon />}
+                            label="متابعة"
+                            active={activeTab === 'employees'}
+                            onClick={() => setActiveTab('employees')}
+                        />
+                    )}
                     <NavItem
                         icon={<ProfileIcon />}
                         label="حسابي"
@@ -756,6 +772,60 @@ function NotificationsTab({ notifications, onRefresh }: {
     )
 }
 
+// Employees Tab Component (Admin only)
+function EmployeesTab({ employees }: { employees: Employee[] }) {
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">متابعة مهام الموظفين</h2>
+                <span className="text-sm text-slate-500 dark:text-slate-400">{employees.length} موظف</span>
+            </div>
+
+            {employees.length === 0 ? (
+                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center">
+                    <p className="text-slate-500 dark:text-slate-400">لا يوجد موظفين</p>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {employees.filter(emp => emp.role !== 'admin').map(employee => (
+                        <Link
+                            key={employee.id}
+                            href={`/dashboard/staff/${employee.id}`}
+                            className="block bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                    {employee.full_name?.charAt(0) || employee.email.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-slate-900 dark:text-white">
+                                        {employee.full_name || 'بدون اسم'}
+                                    </p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                                        {employee.email}
+                                    </p>
+                                </div>
+                                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                            </div>
+                            {employee.groups.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {employee.groups.map(g => (
+                                        <span key={g.id} className="text-xs px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                            {g.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </Link>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
+
 // Profile Tab Component
 function ProfileTab({ user, profile, onSignOut }: {
     user: User | null
@@ -1040,6 +1110,14 @@ function ProfileIcon() {
     return (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+    )
+}
+
+function EmployeesIcon() {
+    return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
     )
 }
