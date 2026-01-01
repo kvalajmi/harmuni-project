@@ -7,36 +7,36 @@ const resendApiKey = process.env.RESEND_API_KEY
 const resend = resendApiKey ? new Resend(resendApiKey) : null
 
 export interface TaskEmailData {
-    to: string
-    recipientName: string
-    taskTitle: string
-    taskDescription?: string
-    priority: 'low' | 'medium' | 'high'
-    assignerName: string
-    dashboardUrl: string
+  to: string
+  recipientName: string
+  taskTitle: string
+  taskDescription?: string
+  priority: 'low' | 'medium' | 'high'
+  assignerName: string
+  dashboardUrl: string
 }
 
 const priorityLabels = {
-    low: { text: 'منخفضة', color: '#22c55e', bgColor: '#22c55e20' },
-    medium: { text: 'متوسطة', color: '#f59e0b', bgColor: '#f59e0b20' },
-    high: { text: 'عالية', color: '#ef4444', bgColor: '#ef444420' }
+  low: { text: 'منخفضة', color: '#22c55e', bgColor: '#22c55e20' },
+  medium: { text: 'متوسطة', color: '#f59e0b', bgColor: '#f59e0b20' },
+  high: { text: 'عالية', color: '#ef4444', bgColor: '#ef444420' }
 }
 
 export async function sendTaskEmail(data: TaskEmailData): Promise<{ success: boolean; error?: string }> {
-    if (!resend) {
-        console.log('[Email] Resend not configured, skipping email')
-        return { success: false, error: 'Email not configured' }
-    }
+  if (!resend) {
+    console.log('[Email] Resend not configured, skipping email')
+    return { success: false, error: 'Email not configured' }
+  }
 
-    const { to, recipientName, taskTitle, taskDescription, priority, assignerName, dashboardUrl } = data
-    const priorityInfo = priorityLabels[priority]
+  const { to, recipientName, taskTitle, taskDescription, priority, assignerName, dashboardUrl } = data
+  const priorityInfo = priorityLabels[priority]
 
-    try {
-        const { error } = await resend.emails.send({
-            from: 'Ops Room <onboarding@resend.dev>', // Use your verified domain in production
-            to: [to],
-            subject: `📋 مهمة جديدة: ${taskTitle}`,
-            html: `
+  try {
+    const { error } = await resend.emails.send({
+      from: 'Ops Room <noreply@harmuni.org>',
+      to: [to],
+      subject: `📋 مهمة جديدة: ${taskTitle}`,
+      html: `
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -97,40 +97,40 @@ export async function sendTaskEmail(data: TaskEmailData): Promise<{ success: boo
 </body>
 </html>
       `.trim()
-        })
+    })
 
-        if (error) {
-            console.error('[Email] Send error:', error)
-            return { success: false, error: error.message }
-        }
-
-        console.log(`[Email] Sent to ${to}`)
-        return { success: true }
-
-    } catch (error) {
-        console.error('[Email] Exception:', error)
-        return { success: false, error: 'Failed to send email' }
+    if (error) {
+      console.error('[Email] Send error:', error)
+      return { success: false, error: error.message }
     }
+
+    console.log(`[Email] Sent to ${to}`)
+    return { success: true }
+
+  } catch (error) {
+    console.error('[Email] Exception:', error)
+    return { success: false, error: 'Failed to send email' }
+  }
 }
 
 // Batch send emails to multiple recipients
 export async function sendTaskEmailsBatch(
-    emails: TaskEmailData[]
+  emails: TaskEmailData[]
 ): Promise<{ sent: number; failed: number }> {
-    let sent = 0
-    let failed = 0
+  let sent = 0
+  let failed = 0
 
-    // Send emails in parallel with a limit
-    const batchSize = 5
-    for (let i = 0; i < emails.length; i += batchSize) {
-        const batch = emails.slice(i, i + batchSize)
-        const results = await Promise.all(batch.map(sendTaskEmail))
+  // Send emails in parallel with a limit
+  const batchSize = 5
+  for (let i = 0; i < emails.length; i += batchSize) {
+    const batch = emails.slice(i, i + batchSize)
+    const results = await Promise.all(batch.map(sendTaskEmail))
 
-        for (const result of results) {
-            if (result.success) sent++
-            else failed++
-        }
+    for (const result of results) {
+      if (result.success) sent++
+      else failed++
     }
+  }
 
-    return { sent, failed }
+  return { sent, failed }
 }

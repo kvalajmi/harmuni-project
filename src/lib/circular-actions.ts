@@ -344,7 +344,7 @@ export async function sendCircularReminderAction(
 
         // Send reminder email
         await resend.emails.send({
-            from: 'Ops Room <noreply@resend.dev>',
+            from: 'Ops Room <noreply@harmuni.org>',
             to: user.email,
             subject: `تذكير: يرجى قراءة التعميم - ${circular.title}`,
             html: `
