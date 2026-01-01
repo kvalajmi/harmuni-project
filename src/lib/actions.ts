@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { sendTaskEmailsBatch, TaskEmailData } from './email'
+import { sendPushNotificationAction } from './onesignal-server'
 
 // Create a server-side Supabase client with service role for admin operations
 const supabaseAdmin = createClient(
@@ -168,6 +169,22 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
                 })
                 emailsSent = emailData.length
             }
+
+            // 5b. Send push notifications via OneSignal
+            sendPushNotificationAction({
+                userIds: userIds,
+                title: 'مهمة جديدة 📋',
+                body: `تم تعيين مهمة لك: ${title}`,
+                url: `https://opsroom.vercel.app/dashboard/tasks/${task.id}`
+            }).then(result => {
+                if (result.success) {
+                    console.log('[Push] Notifications sent successfully')
+                } else {
+                    console.error('[Push] Failed:', result.error)
+                }
+            }).catch(err => {
+                console.error('[Push] Error:', err)
+            })
         }
 
         // 6. Revalidate paths

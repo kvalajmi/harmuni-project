@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
+import { sendPushNotificationAction } from './onesignal-server'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -122,6 +123,22 @@ export async function createCircularAction(input: CreateCircularInput): Promise<
             }))
 
             await supabaseAdmin.from('notifications').insert(notifications)
+
+            // 5. Send push notifications via OneSignal
+            sendPushNotificationAction({
+                userIds: recipientIds,
+                title: 'تعميم جديد 📢',
+                body: title,
+                url: `https://opsroom.vercel.app/dashboard/circulars/${circular.id}`
+            }).then(result => {
+                if (result.success) {
+                    console.log('[Push] Circular notification sent successfully')
+                } else {
+                    console.error('[Push] Circular notification failed:', result.error)
+                }
+            }).catch(err => {
+                console.error('[Push] Circular notification error:', err)
+            })
         }
 
         revalidatePath('/dashboard')
