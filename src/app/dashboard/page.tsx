@@ -79,6 +79,10 @@ export default function DashboardPage() {
             if (profileData?.role === 'admin') {
                 const createdTasks = await getCreatedTasksAction(user.id)
                 if (createdTasks && createdTasks.length > 0) {
+                    // Calculate totals from all tasks
+                    const totalPending = createdTasks.reduce((sum, t) => sum + t.pending_count, 0)
+                    const totalCompleted = createdTasks.reduce((sum, t) => sum + t.completed_count, 0)
+
                     setAdminTasks(createdTasks.map(t => ({
                         id: t.id,
                         title: t.title,
@@ -87,7 +91,7 @@ export default function DashboardPage() {
                         is_archived: false,
                         assignment_count: t.assignment_count
                     })))
-                    setStats({ pending: 0, completed: 0, total: createdTasks.length })
+                    setStats({ pending: totalPending, completed: totalCompleted, total: totalPending + totalCompleted })
                 } else {
                     setAdminTasks([])
                     setStats({ pending: 0, completed: 0, total: 0 })

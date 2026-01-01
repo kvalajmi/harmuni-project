@@ -222,7 +222,7 @@ export async function updateAssignmentStatusAction(
     }
 }
 
-export async function getCreatedTasksAction(userId: string): Promise<{ id: string; title: string; created_at: string; assignment_count: number }[]> {
+export async function getCreatedTasksAction(userId: string): Promise<{ id: string; title: string; created_at: string; assignment_count: number; pending_count: number; completed_count: number }[]> {
     try {
         const { data: tasks } = await supabaseAdmin
             .from('tasks')
@@ -233,20 +233,29 @@ export async function getCreatedTasksAction(userId: string): Promise<{ id: strin
 
         if (!tasks) return []
 
-        // Get assignment counts
-        const { data: counts } = await supabaseAdmin
+        // Get all assignments with status
+        const { data: assignments } = await supabaseAdmin
             .from('task_assignments')
-            .select('task_id')
+            .select('task_id, status')
             .in('task_id', tasks.map(t => t.id))
 
-        const countMap = new Map<string, number>()
-        counts?.forEach(c => {
-            countMap.set(c.task_id, (countMap.get(c.task_id) || 0) + 1)
+        const countMap = new Map<string, { total: number; pending: number; completed: number }>()
+        assignments?.forEach(a => {
+            const existing = countMap.get(a.task_id) || { total: 0, pending: 0, completed: 0 }
+            existing.total++
+            if (a.status === 'pending' || a.status === 'in_progress') {
+                existing.pending++
+            } else if (a.status === 'completed') {
+                existing.completed++
+            }
+            countMap.set(a.task_id, existing)
         })
 
         return tasks.map(t => ({
             ...t,
-            assignment_count: countMap.get(t.id) || 0
+            assignment_count: countMap.get(t.id)?.total || 0,
+            pending_count: countMap.get(t.id)?.pending || 0,
+            completed_count: countMap.get(t.id)?.completed || 0
         }))
     } catch (error) {
         console.error('Get created tasks error:', error)
