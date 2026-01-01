@@ -908,7 +908,7 @@ function ProfileTab({ user, profile, onSignOut }: {
                         <p className="text-xs text-slate-500 dark:text-slate-400">تحكم في الإشعارات الفورية</p>
                     </div>
                 </div>
-                <PushNotificationToggle userId={user?.id || ''} />
+                <PushNotificationToggle userId={user?.id || ''} userEmail={user?.email} userName={profile?.full_name || undefined} />
             </div>
 
             {/* Security Settings - Password Change */}
