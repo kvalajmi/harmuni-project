@@ -29,10 +29,7 @@ export async function sendPushNotificationAction(options: SendNotificationOption
             },
             body: JSON.stringify({
                 app_id: ONESIGNAL_APP_ID,
-                include_aliases: {
-                    external_id: userIds
-                },
-                target_channel: 'push',
+                include_external_user_ids: userIds,
                 headings: { ar: title, en: title },
                 contents: { ar: body, en: body },
                 url: url || 'https://opsroom.vercel.app/dashboard',
