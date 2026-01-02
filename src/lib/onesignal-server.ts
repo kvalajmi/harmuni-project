@@ -17,8 +17,12 @@ export async function sendPushNotificationAction(options: SendNotificationOption
     const { userIds, title, body, url, data } = options
 
     if (!userIds || userIds.length === 0) {
+        console.log('[OneSignal Server] No users specified')
         return { success: false, error: 'No users specified' }
     }
+
+    console.log('[OneSignal Server] Sending push to userIds:', userIds)
+    console.log('[OneSignal Server] Title:', title, 'Body:', body)
 
     try {
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
@@ -45,13 +49,14 @@ export async function sendPushNotificationAction(options: SendNotificationOption
         })
 
         const result = await response.json()
+        console.log('[OneSignal Server] API Response:', JSON.stringify(result, null, 2))
 
         if (!response.ok) {
-            console.error('OneSignal API error:', result)
+            console.error('[OneSignal Server] API error:', result)
             return { success: false, error: result.errors?.[0] || 'Failed to send notification' }
         }
 
-        console.log('OneSignal notification sent:', result.id)
+        console.log('[OneSignal Server] Notification sent successfully, id:', result.id)
         return { success: true }
     } catch (error: any) {
         console.error('OneSignal send error:', error)

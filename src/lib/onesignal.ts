@@ -104,15 +104,21 @@ export function useOneSignal() {
     }
 
     const setExternalUserId = async (userId: string, email?: string) => {
-        if (typeof window === 'undefined' || !window.OneSignal) return
+        if (typeof window === 'undefined' || !window.OneSignal) {
+            console.log('[OneSignal] Not ready, skipping login')
+            return
+        }
 
         try {
+            console.log('[OneSignal] Logging in with userId:', userId)
             await window.OneSignal.login(userId)
+            console.log('[OneSignal] Login successful for:', userId)
             if (email) {
                 await window.OneSignal.User.addEmail(email)
+                console.log('[OneSignal] Email added:', email)
             }
         } catch (err) {
-            console.error('Set external user error:', err)
+            console.error('[OneSignal] Set external user error:', err)
         }
     }
 
