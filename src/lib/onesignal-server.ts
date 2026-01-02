@@ -40,11 +40,7 @@ export async function sendPushNotificationAction(options: SendNotificationOption
                 data: data || {},
                 // iOS specific
                 ios_badgeType: 'Increase',
-                ios_badgeCount: 1,
-                // Android specific
-                android_channel_id: 'default',
-                // Web specific
-                chrome_web_badge: 'https://opsroom.vercel.app/icon-192x192.png'
+                ios_badgeCount: 1
             })
         })
 
