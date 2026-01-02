@@ -33,8 +33,11 @@ export async function sendPushNotificationAction(options: SendNotificationOption
             },
             body: JSON.stringify({
                 app_id: ONESIGNAL_APP_ID,
-                include_external_user_ids: userIds,
-                target_channel: 'push', // Only send push notifications, not email
+                // Use include_aliases (new format) instead of deprecated include_external_user_ids
+                include_aliases: {
+                    external_id: userIds
+                },
+                target_channel: 'push', // CRITICAL: Only send push notifications, not email
                 headings: { ar: title, en: title },
                 contents: { ar: body, en: body },
                 url: url || 'https://opsroom.vercel.app/dashboard',
