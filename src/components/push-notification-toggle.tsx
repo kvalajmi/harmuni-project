@@ -16,7 +16,9 @@ export function PushNotificationToggle({ userId, userEmail }: PushNotificationTo
 
     useEffect(() => {
         // Set user ID for targeting when loaded
+        console.log('[Toggle] isLoaded:', isLoaded, 'userId:', userId, 'isEnabled:', isEnabled)
         if (isLoaded && userId) {
+            console.log('[Toggle] Calling setExternalUserId...')
             setExternalUserId(userId, userEmail)
         }
     }, [isLoaded, userId, userEmail, setExternalUserId])

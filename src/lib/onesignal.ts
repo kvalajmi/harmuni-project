@@ -34,17 +34,22 @@ export function useOneSignal() {
     useEffect(() => {
         if (typeof window === 'undefined') return
 
+        console.log('[OneSignal Hook] Starting initialization...')
+
         // Check if already loaded
         if (window.OneSignal && typeof window.OneSignal.init === 'function') {
+            console.log('[OneSignal Hook] Already loaded, setting isLoaded=true')
             setIsLoaded(true)
             checkPermission()
             return
         }
 
         // OneSignal v16 initialization pattern
+        console.log('[OneSignal Hook] Setting up OneSignalDeferred...')
         window.OneSignalDeferred = window.OneSignalDeferred || []
         window.OneSignalDeferred.push(async function (OneSignal: any) {
             try {
+                console.log('[OneSignal Hook] Deferred callback executing, calling init...')
                 await OneSignal.init({
                     appId: ONESIGNAL_APP_ID,
                     allowLocalhostAsSecureOrigin: true,
@@ -52,14 +57,15 @@ export function useOneSignal() {
                         enable: false
                     }
                 })
-                console.log('OneSignal initialized successfully')
+                console.log('[OneSignal Hook] Init successful, setting isLoaded=true')
                 setIsLoaded(true)
 
                 // Check current permission
                 const perm = await OneSignal.Notifications.permission
+                console.log('[OneSignal Hook] Permission status:', perm)
                 setIsEnabled(perm)
             } catch (err: any) {
-                console.error('OneSignal init error:', err)
+                console.error('[OneSignal Hook] Init error:', err)
                 setError(err.message || 'Failed to initialize')
                 setIsLoaded(true) // Still mark as loaded to stop "loading" state
             }
