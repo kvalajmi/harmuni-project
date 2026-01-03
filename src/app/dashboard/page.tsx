@@ -97,12 +97,14 @@ export default function DashboardPage() {
     const notifications = (notificationsData || []) as Notification[]
     const circulars = (isAdmin ? adminCircularsData : staffCircularsData) || []
 
-    // Calculate stats
+    // Calculate stats from adminTasksWithAssignmentsData for real-time updates
+    const allAdminAssignments = adminTasks.flatMap(t => t.assignments)
+
     const stats = isAdmin
         ? {
-            pending: (createdTasksData || []).reduce((sum, t) => sum + t.pending_count, 0),
-            completed: (createdTasksData || []).reduce((sum, t) => sum + t.completed_count, 0),
-            total: (createdTasksData || []).reduce((sum, t) => sum + t.pending_count + t.completed_count, 0)
+            pending: allAdminAssignments.filter(a => a.status === 'pending' || a.status === 'in_progress').length,
+            completed: allAdminAssignments.filter(a => a.status === 'completed').length,
+            total: allAdminAssignments.length
         }
         : {
             pending: tasks.filter(a => a.status === 'pending' || a.status === 'in_progress').length,
