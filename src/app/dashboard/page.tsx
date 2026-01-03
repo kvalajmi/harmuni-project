@@ -276,8 +276,20 @@ export default function DashboardPage() {
                                                         key={notification.id}
                                                         onClick={async () => {
                                                             if (!notification.is_read) {
+                                                                // Optimistically update the local cache
+                                                                mutateNotifications(
+                                                                    (current: Notification[] | undefined) =>
+                                                                        current?.map(n =>
+                                                                            n.id === notification.id
+                                                                                ? { ...n, is_read: true }
+                                                                                : n
+                                                                        ),
+                                                                    false // Don't revalidate yet
+                                                                )
+                                                                // Then call the server action
                                                                 await markNotificationReadAction(notification.id)
-                                                                loadData()
+                                                                // Revalidate to get fresh data
+                                                                mutateNotifications()
                                                             }
                                                         }}
                                                         className={`p-3 border-b border-slate-100 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${!notification.is_read ? 'bg-blue-50/50 dark:bg-blue-500/10' : ''
@@ -354,7 +366,7 @@ export default function DashboardPage() {
                             />
                         )}
                         {activeTab === 'notifications' && (
-                            <NotificationsTab notifications={notifications} onRefresh={loadData} />
+                            <NotificationsTab notifications={notifications} onRefresh={loadData} mutateNotifications={mutateNotifications} />
                         )}
                         {activeTab === 'employees' && profile?.role === 'admin' && (
                             <EmployeesTab employees={employees} />
@@ -792,17 +804,30 @@ function CircularsTab({ circulars, isAdmin, onRefresh }: {
 }
 
 // Notifications Tab Component
-function NotificationsTab({ notifications, onRefresh }: {
+function NotificationsTab({ notifications, onRefresh, mutateNotifications }: {
     notifications: Notification[]
     onRefresh: () => void
+    mutateNotifications: (data?: Notification[] | ((current: Notification[] | undefined) => Notification[] | undefined), shouldRevalidate?: boolean) => void
 }) {
     const router = useRouter()
 
     const handleNotificationClick = async (notification: Notification) => {
-        // Mark as read using server action (bypasses RLS)
+        // Mark as read using optimistic update
         if (!notification.is_read) {
+            // Optimistically update the local cache
+            mutateNotifications(
+                (current: Notification[] | undefined) =>
+                    current?.map(n =>
+                        n.id === notification.id
+                            ? { ...n, is_read: true }
+                            : n
+                    ),
+                false
+            )
+            // Call server action
             await markNotificationReadAction(notification.id)
-            onRefresh()
+            // Revalidate
+            mutateNotifications()
         }
 
         // Navigate to task if related_task_id exists
