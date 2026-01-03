@@ -356,6 +356,84 @@ export async function getCreatedTasksAction(userId: string): Promise<{ id: strin
     }
 }
 
+// Get admin tasks with all assignments details
+export interface AdminTaskWithAssignments {
+    id: string
+    title: string
+    description: string | null
+    created_at: string
+    assignments: {
+        id: string
+        user_id: string
+        employee_name: string
+        employee_email: string
+        status: 'pending' | 'in_progress' | 'completed' | 'rejected'
+        completed_at: string | null
+    }[]
+}
+
+export async function getAdminTasksWithAssignmentsAction(userId: string): Promise<AdminTaskWithAssignments[]> {
+    try {
+        const { data: tasks } = await supabaseAdmin
+            .from('tasks')
+            .select('id, title, description, created_at')
+            .eq('created_by', userId)
+            .eq('is_archived', false)
+            .order('created_at', { ascending: false })
+
+        if (!tasks || tasks.length === 0) return []
+
+        // Get all assignments with user info
+        const { data: assignments } = await supabaseAdmin
+            .from('task_assignments')
+            .select('id, task_id, user_id, status, completed_at')
+            .in('task_id', tasks.map(t => t.id))
+
+        // Get employee profiles
+        const userIds = [...new Set(assignments?.map(a => a.user_id) || [])]
+        const { data: profiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', userIds)
+
+        const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+
+        return tasks.map(t => ({
+            ...t,
+            assignments: (assignments?.filter(a => a.task_id === t.id) || []).map(a => ({
+                id: a.id,
+                user_id: a.user_id,
+                employee_name: profileMap.get(a.user_id)?.full_name || 'غير معروف',
+                employee_email: profileMap.get(a.user_id)?.email || '',
+                status: a.status as 'pending' | 'in_progress' | 'completed' | 'rejected',
+                completed_at: a.completed_at
+            }))
+        }))
+    } catch (error) {
+        console.error('Get admin tasks with assignments error:', error)
+        return []
+    }
+}
+
+// Admin marks an assignment as completed
+export async function adminMarkAssignmentCompleteAction(assignmentId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'completed',
+                completed_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        revalidatePath('/dashboard')
+        return { success: true }
+    } catch (error) {
+        console.error('Admin mark complete error:', error)
+        return { success: false }
+    }
+}
+
 // ============== COMMENTS ==============
 
 export interface TaskComment {

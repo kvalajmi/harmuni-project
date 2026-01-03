@@ -6,11 +6,13 @@ import {
     getAssignedTasksAction,
     getNotificationsAction,
     getCreatedTasksAction,
+    getAdminTasksWithAssignmentsAction,
     getEmployeeProfileAction,
     getTaskDetailsAction,
     getTaskCommentsAction,
     EmployeeWithStats,
     AssignedTask,
+    AdminTaskWithAssignments,
     EmployeeProfileData,
     TaskDetails,
     TaskComment
@@ -56,6 +58,15 @@ export function useCreatedTasks(userId: string | null) {
     return useSWR(
         userId ? ['created-tasks', userId] : null,
         () => getCreatedTasksAction(userId!),
+        swrConfig
+    )
+}
+
+// Hook for admin tasks with full assignments (Admin)
+export function useAdminTasksWithAssignments(userId: string | null) {
+    return useSWR<AdminTaskWithAssignments[]>(
+        userId ? ['admin-tasks-assignments', userId] : null,
+        () => getAdminTasksWithAssignmentsAction(userId!),
         swrConfig
     )
 }
@@ -122,6 +133,7 @@ export const mutationKeys = {
     employees: 'employees-with-stats',
     assignedTasks: (userId: string) => ['assigned-tasks', userId],
     createdTasks: (userId: string) => ['created-tasks', userId],
+    adminTasksWithAssignments: (userId: string) => ['admin-tasks-assignments', userId],
     notifications: (userId: string) => ['notifications', userId],
     adminCirculars: (userId: string) => ['admin-circulars', userId],
     staffCirculars: (userId: string) => ['staff-circulars', userId],

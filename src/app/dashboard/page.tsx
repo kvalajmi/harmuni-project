@@ -11,11 +11,12 @@ import { CreateTaskDrawer } from '@/components/create-task-drawer'
 import { CreateCircularDrawer } from '@/components/create-circular-drawer'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { PushNotificationToggle } from '@/components/push-notification-toggle'
-import { markNotificationReadAction, AssignedTask, EmployeeWithStats } from '@/lib/staff-actions'
+import { markNotificationReadAction, AssignedTask, EmployeeWithStats, AdminTaskWithAssignments, adminMarkAssignmentCompleteAction } from '@/lib/staff-actions'
 import {
     useEmployeesWithStats,
     useAssignedTasks,
     useCreatedTasks,
+    useAdminTasksWithAssignments,
     useNotifications,
     useAdminCirculars,
     useStaffCirculars,
@@ -84,6 +85,7 @@ export default function DashboardPage() {
     const { data: employeesData } = useEmployeesWithStats()
     const { data: assignedTasksData } = useAssignedTasks(userId)
     const { data: createdTasksData } = useCreatedTasks(isAdmin ? userId : null)
+    const { data: adminTasksWithAssignmentsData, mutate: mutateAdminTasks } = useAdminTasksWithAssignments(isAdmin ? userId : null)
     const { data: notificationsData, mutate: mutateNotifications } = useNotifications(userId)
     const { data: adminCircularsData } = useAdminCirculars(isAdmin ? userId : null)
     const { data: staffCircularsData } = useStaffCirculars(!isAdmin ? userId : null)
@@ -91,14 +93,7 @@ export default function DashboardPage() {
     // Derived data
     const employees = employeesData || []
     const tasks = assignedTasksData || []
-    const adminTasks = (createdTasksData || []).map(t => ({
-        id: t.id,
-        title: t.title,
-        description: null,
-        created_at: t.created_at,
-        is_archived: false,
-        assignment_count: t.assignment_count
-    }))
+    const adminTasks = adminTasksWithAssignmentsData || []
     const notifications = (notificationsData || []) as Notification[]
     const circulars = (isAdmin ? adminCircularsData : staffCircularsData) || []
 
@@ -356,6 +351,7 @@ export default function DashboardPage() {
                                 adminTasks={adminTasks}
                                 isAdmin={profile?.role === 'admin'}
                                 onRefresh={loadData}
+                                mutateAdminTasks={mutateAdminTasks}
                             />
                         )}
                         {activeTab === 'circulars' && (
@@ -687,12 +683,15 @@ function TaskItem({ assignment }: { assignment: AssignedTask }) {
 }
 
 // Tasks Tab Component - Different views for Admin vs Staff
-function TasksTab({ tasks, adminTasks, isAdmin, onRefresh }: {
+function TasksTab({ tasks, adminTasks, isAdmin, onRefresh, mutateAdminTasks }: {
     tasks: AssignedTask[]
-    adminTasks: { id: string; title: string; description: string | null; created_at: string; assignment_count: number }[]
+    adminTasks: AdminTaskWithAssignments[]
     isAdmin: boolean
     onRefresh: () => void
+    mutateAdminTasks: () => void
 }) {
+    const [markingId, setMarkingId] = useState<string | null>(null)
+
     const getTimeAgo = (dateString: string) => {
         const date = new Date(dateString)
         const now = new Date()
@@ -707,7 +706,48 @@ function TasksTab({ tasks, adminTasks, isAdmin, onRefresh }: {
         return 'الآن'
     }
 
-    // ADMIN VIEW - Show tasks created by admin
+    const handleMarkComplete = async (assignmentId: string) => {
+        setMarkingId(assignmentId)
+        await adminMarkAssignmentCompleteAction(assignmentId)
+        mutateAdminTasks()
+        setMarkingId(null)
+    }
+
+    // Flatten all assignments with task info for table view
+    const allAssignments = adminTasks.flatMap(task =>
+        task.assignments.map(a => ({
+            ...a,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskDescription: task.description,
+            taskCreatedAt: task.created_at
+        }))
+    )
+
+    // Sort: incomplete first, then completed at bottom
+    const sortedAssignments = [...allAssignments].sort((a, b) => {
+        const aComplete = a.status === 'completed'
+        const bComplete = b.status === 'completed'
+        if (aComplete && !bComplete) return 1
+        if (!aComplete && bComplete) return -1
+        return 0
+    })
+
+    const statusColors: Record<string, string> = {
+        pending: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
+        in_progress: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
+        completed: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
+        rejected: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'
+    }
+
+    const statusLabels: Record<string, string> = {
+        pending: 'قيد الانتظار',
+        in_progress: 'قيد التنفيذ',
+        completed: 'منجزة ✓',
+        rejected: 'مرفوضة'
+    }
+
+    // ADMIN VIEW - Show tasks created by admin with assignments table
     if (isAdmin) {
         return (
             <div className="space-y-4">
@@ -723,28 +763,77 @@ function TasksTab({ tasks, adminTasks, isAdmin, onRefresh }: {
                     </button>
                 </div>
 
-                {adminTasks.length > 0 ? (
+                {sortedAssignments.length > 0 ? (
                     <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
-                        {adminTasks.map((task) => (
-                            <Link
-                                key={task.id}
-                                href={`/dashboard/tasks/${task.id}`}
-                                className="block p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-b border-slate-200 dark:border-slate-700/50 last:border-0"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-medium text-slate-900 dark:text-white truncate">{task.title}</h4>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1">{task.description || 'بدون وصف'}</p>
+                        {/* Table Header */}
+                        <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            <div className="col-span-4">المهمة</div>
+                            <div className="col-span-3">الموظف</div>
+                            <div className="col-span-2 text-center">الحالة</div>
+                            <div className="col-span-3 text-center">إجراء</div>
+                        </div>
+                        {/* Rows */}
+                        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                            {sortedAssignments.map((assignment) => (
+                                <div
+                                    key={assignment.id}
+                                    className={`grid grid-cols-12 gap-2 p-3 items-center transition-colors ${assignment.status === 'completed' ? 'opacity-60 bg-green-50/30 dark:bg-green-500/5' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}
+                                >
+                                    {/* Task Title */}
+                                    <Link
+                                        href={`/dashboard/tasks/${assignment.taskId}`}
+                                        className="col-span-4"
+                                    >
+                                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate hover:text-blue-600 dark:hover:text-blue-400">
+                                            {assignment.taskTitle}
+                                        </p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{getTimeAgo(assignment.taskCreatedAt)}</p>
+                                    </Link>
+
+                                    {/* Employee */}
+                                    <div className="col-span-3 flex items-center gap-2">
+                                        <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                            {assignment.employee_name?.charAt(0) || '?'}
+                                        </div>
+                                        <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{assignment.employee_name}</span>
                                     </div>
-                                    <div className="text-left shrink-0">
-                                        <span className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400">
-                                            {task.assignment_count} موظف
+
+                                    {/* Status */}
+                                    <div className="col-span-2 text-center">
+                                        <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${statusColors[assignment.status]}`}>
+                                            {statusLabels[assignment.status]}
                                         </span>
-                                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{getTimeAgo(task.created_at)}</p>
+                                    </div>
+
+                                    {/* Action */}
+                                    <div className="col-span-3 text-center">
+                                        {assignment.status !== 'completed' ? (
+                                            <button
+                                                onClick={() => handleMarkComplete(assignment.id)}
+                                                disabled={markingId === assignment.id}
+                                                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1 mx-auto"
+                                            >
+                                                {markingId === assignment.id ? (
+                                                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                    </svg>
+                                                ) : (
+                                                    <>
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        منجزة
+                                                    </>
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <span className="text-xs text-green-600 dark:text-green-400">✓ تمت</span>
+                                        )}
                                     </div>
                                 </div>
-                            </Link>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 ) : (
                     <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-12 text-center shadow-sm">
