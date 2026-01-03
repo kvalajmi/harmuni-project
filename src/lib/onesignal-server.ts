@@ -21,8 +21,12 @@ export async function sendPushNotificationAction(options: SendNotificationOption
         return { success: false, error: 'No users specified' }
     }
 
-    console.log('[OneSignal Server] Sending push to userIds:', userIds)
-    console.log('[OneSignal Server] Title:', title, 'Body:', body)
+    console.log('🔔 ═══════════════════════════════════════════')
+    console.log('🔔 ONESIGNAL API REQUEST')
+    console.log('🔔 User IDs:', JSON.stringify(userIds))
+    console.log('🔔 Title:', title)
+    console.log('🔔 Body:', body)
+    console.log('🔔 ═══════════════════════════════════════════')
 
     try {
         const response = await fetch('https://onesignal.com/api/v1/notifications', {

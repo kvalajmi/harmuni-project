@@ -171,6 +171,18 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
             }
 
             // 5b. Send push notifications via OneSignal
+            // DEBUG: Log the exact user IDs being sent
+            console.log('📱 ═══════════════════════════════════════════')
+            console.log('📱 PUSH NOTIFICATION DEBUG')
+            console.log('📱 Sending to user IDs:', JSON.stringify(userIds))
+            console.log('📱 Expected iPhone ID: df3a4d08-8d1f-424b-abac-b580499648df')
+            console.log('📱 Total users:', userIds.length)
+            userIds.forEach((id, index) => {
+                const isMatch = id === 'df3a4d08-8d1f-424b-abac-b580499648df'
+                console.log(`📱 User ${index + 1}: ${id} ${isMatch ? '✅ MATCH!' : '❌ NO MATCH'}`)
+            })
+            console.log('📱 ═══════════════════════════════════════════')
+
             sendPushNotificationAction({
                 userIds: userIds,
                 title: 'مهمة جديدة 📋',
@@ -178,12 +190,12 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
                 url: `https://opsroom.vercel.app/dashboard/tasks/${task.id}`
             }).then(result => {
                 if (result.success) {
-                    console.log('[Push] Notifications sent successfully')
+                    console.log('[Push] ✅ Notifications sent successfully')
                 } else {
-                    console.error('[Push] Failed:', result.error)
+                    console.error('[Push] ❌ Failed:', result.error)
                 }
             }).catch(err => {
-                console.error('[Push] Error:', err)
+                console.error('[Push] ❌ Error:', err)
             })
         }
 
