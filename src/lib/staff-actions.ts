@@ -26,6 +26,8 @@ export interface Employee {
     role: string
     created_at: string
     groups: { id: string; name: string }[]
+    is_active: boolean
+    deactivated_at: string | null
 }
 
 export async function createEmployeeAction(input: CreateEmployeeInput): Promise<{ success: boolean; error?: string }> {
@@ -79,7 +81,7 @@ export async function getEmployeesAction(): Promise<Employee[]> {
         // Get profiles
         const { data: profiles } = await supabaseAdmin
             .from('profiles')
-            .select('id, full_name, role, created_at')
+            .select('id, full_name, role, created_at, is_active, deactivated_at')
 
         // Get group memberships with group names
         const { data: memberships } = await supabaseAdmin
@@ -104,7 +106,9 @@ export async function getEmployeesAction(): Promise<Employee[]> {
             email: u.email || '',
             role: profileMap.get(u.id)?.role || 'member',
             created_at: profileMap.get(u.id)?.created_at || u.created_at,
-            groups: groupMap.get(u.id) || []
+            groups: groupMap.get(u.id) || [],
+            is_active: profileMap.get(u.id)?.is_active ?? true,
+            deactivated_at: profileMap.get(u.id)?.deactivated_at || null
         })) || []
 
     } catch (error) {
@@ -131,7 +135,7 @@ export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]
         // Get profiles
         const { data: profiles } = await supabaseAdmin
             .from('profiles')
-            .select('id, full_name, role, created_at')
+            .select('id, full_name, role, created_at, is_active, deactivated_at')
 
         // Get group memberships with group names
         const { data: memberships } = await supabaseAdmin
@@ -186,6 +190,8 @@ export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]
             role: profileMap.get(u.id)?.role || 'member',
             created_at: profileMap.get(u.id)?.created_at || u.created_at,
             groups: groupMap.get(u.id) || [],
+            is_active: profileMap.get(u.id)?.is_active ?? true,
+            deactivated_at: profileMap.get(u.id)?.deactivated_at || null,
             stats: {
                 totalTasks: statsMap.get(u.id)?.totalTasks || 0,
                 activeTasks: statsMap.get(u.id)?.activeTasks || 0,
@@ -894,5 +900,74 @@ export async function sendTaskReminderAction(
     } catch (error) {
         console.error('Send task reminder error:', error)
         return { success: false, error: 'فشل في إرسال التذكير' }
+    }
+}
+
+// ============== ACCOUNT SUSPENSION ==============
+
+export async function suspendAccountAction(userId: string, adminId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .update({
+                is_active: false,
+                deactivated_at: new Date().toISOString(),
+                deactivated_by: adminId
+            })
+            .eq('id', userId)
+
+        if (error) {
+            console.error('Suspend account error:', error)
+            return { success: false, error: error.message }
+        }
+
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Suspend account error:', error)
+        return { success: false, error: 'فشل في إيقاف الحساب' }
+    }
+}
+
+export async function activateAccountAction(userId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .update({
+                is_active: true,
+                deactivated_at: null,
+                deactivated_by: null
+            })
+            .eq('id', userId)
+
+        if (error) {
+            console.error('Activate account error:', error)
+            return { success: false, error: error.message }
+        }
+
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Activate account error:', error)
+        return { success: false, error: 'فشل في تنشيط الحساب' }
+    }
+}
+
+export async function getAccountStatusAction(userId: string): Promise<{ is_active: boolean; deactivated_at: string | null }> {
+    try {
+        const { data } = await supabaseAdmin
+            .from('profiles')
+            .select('is_active, deactivated_at')
+            .eq('id', userId)
+            .single()
+
+        return {
+            is_active: data?.is_active ?? true,
+            deactivated_at: data?.deactivated_at || null
+        }
+    } catch {
+        return { is_active: true, deactivated_at: null }
     }
 }

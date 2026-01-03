@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { createEmployeeAction, getEmployeesAction, deleteEmployeeAction, Employee } from '@/lib/staff-actions'
+import { createEmployeeAction, getEmployeesAction, deleteEmployeeAction, suspendAccountAction, activateAccountAction, Employee } from '@/lib/staff-actions'
 import { getGroupsAction } from '@/lib/actions'
 
 export default function StaffPage() {
@@ -21,6 +21,8 @@ export default function StaffPage() {
     const [loading, setLoading] = useState(true)
     const [showAddDialog, setShowAddDialog] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
+    const [adminId, setAdminId] = useState<string>('')
+    const [togglingId, setTogglingId] = useState<string | null>(null)
     const router = useRouter()
 
     useEffect(() => {
@@ -46,6 +48,7 @@ export default function StaffPage() {
             return
         }
 
+        setAdminId(user.id)
         setIsAdmin(true)
         setEmployees(employeesData)
         setGroups(groupsData)
@@ -61,6 +64,34 @@ export default function StaffPage() {
         setEmployees(employeesData)
         setGroups(groupsData)
         setLoading(false)
+    }
+
+    const handleToggleAccountStatus = async (emp: Employee) => {
+        if (emp.id === adminId) {
+            alert('لا يمكنك إيقاف حسابك الخاص')
+            return
+        }
+
+        setTogglingId(emp.id)
+        try {
+            if (emp.is_active) {
+                const result = await suspendAccountAction(emp.id, adminId)
+                if (result.success) {
+                    setEmployees(prev => prev.map(e =>
+                        e.id === emp.id ? { ...e, is_active: false, deactivated_at: new Date().toISOString() } : e
+                    ))
+                }
+            } else {
+                const result = await activateAccountAction(emp.id)
+                if (result.success) {
+                    setEmployees(prev => prev.map(e =>
+                        e.id === emp.id ? { ...e, is_active: true, deactivated_at: null } : e
+                    ))
+                }
+            }
+        } finally {
+            setTogglingId(null)
+        }
     }
 
     if (!isAdmin) {
@@ -106,16 +137,17 @@ export default function StaffPage() {
                                 <TableRow className="border-slate-200 dark:border-slate-700/50 hover:bg-transparent">
                                     <TableHead className="text-slate-500 dark:text-slate-400 text-right">الموظف</TableHead>
                                     <TableHead className="text-slate-500 dark:text-slate-400 text-right">الدور</TableHead>
+                                    <TableHead className="text-slate-500 dark:text-slate-400 text-right">الحالة</TableHead>
                                     <TableHead className="text-slate-500 dark:text-slate-400 text-right">المجموعات</TableHead>
-                                    <TableHead className="text-slate-500 dark:text-slate-400 text-right w-20">إجراءات</TableHead>
+                                    <TableHead className="text-slate-500 dark:text-slate-400 text-right w-24">إجراءات</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {employees.map((emp) => (
-                                    <TableRow key={emp.id} className="border-slate-200 dark:border-slate-700/50">
+                                    <TableRow key={emp.id} className={`border-slate-200 dark:border-slate-700/50 ${!emp.is_active ? 'opacity-60' : ''}`}>
                                         <TableCell>
                                             <Link href={`/dashboard/staff/${emp.id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
-                                                <Avatar className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600">
+                                                <Avatar className={`h-10 w-10 ${emp.is_active ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-slate-400'}`}>
                                                     <AvatarFallback className="bg-transparent text-white font-semibold">
                                                         {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
                                                     </AvatarFallback>
@@ -133,6 +165,16 @@ export default function StaffPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
+                                            <Badge
+                                                variant={emp.is_active ? 'default' : 'secondary'}
+                                                className={emp.is_active
+                                                    ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                                                    : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'}
+                                            >
+                                                {emp.is_active ? '🟢 نشط' : '🔴 موقوف'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
                                             <div className="flex flex-wrap gap-1">
                                                 {emp.groups.length > 0 ? (
                                                     emp.groups.map(g => (
@@ -146,22 +188,47 @@ export default function StaffPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleDelete(emp.id, emp.email)}
-                                                className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-500/10"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
-                                            </Button>
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleToggleAccountStatus(emp)}
+                                                    disabled={togglingId === emp.id || emp.id === adminId}
+                                                    className={emp.is_active
+                                                        ? 'text-orange-500 dark:text-orange-400 hover:text-orange-600 dark:hover:text-orange-300 hover:bg-orange-500/10'
+                                                        : 'text-green-500 dark:text-green-400 hover:text-green-600 dark:hover:text-green-300 hover:bg-green-500/10'}
+                                                    title={emp.is_active ? 'إيقاف الحساب' : 'تنشيط الحساب'}
+                                                >
+                                                    {togglingId === emp.id ? (
+                                                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                    ) : emp.is_active ? (
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                        </svg>
+                                                    )}
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleDelete(emp.id, emp.email)}
+                                                    className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-500/10"
+                                                    title="حذف الموظف"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
                                 {employees.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center py-12 text-slate-500 dark:text-slate-400">
+                                        <TableCell colSpan={5} className="text-center py-12 text-slate-500 dark:text-slate-400">
                                             لا يوجد موظفين مسجلين
                                         </TableCell>
                                     </TableRow>

@@ -52,10 +52,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [router])
 
     const signIn = async (email: string, password: string) => {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
         })
+
+        // Check if account is suspended
+        if (!error && data.user) {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('is_active')
+                .eq('id', data.user.id)
+                .single()
+
+            if (profile && profile.is_active === false) {
+                // Sign out the user immediately
+                await supabase.auth.signOut()
+                return {
+                    error: {
+                        message: 'تم إيقاف حسابك من قبل مدير النظام',
+                        name: 'AccountSuspendedError',
+                        status: 403
+                    } as AuthError
+                }
+            }
+        }
+
         return { error }
     }
 
