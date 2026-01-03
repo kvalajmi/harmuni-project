@@ -94,14 +94,22 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
         }
         setUserId(user.id)
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
+        // PARALLEL LOADING: Load profile, task, and comments at the same time! 🚀
+        const [profileResult, taskData, commentsData] = await Promise.all([
+            supabase.from('profiles').select('role').eq('id', user.id).single(),
+            getTaskDetailsAction(id),
+            getTaskCommentsAction(id)
+        ])
 
-        setIsAdmin(profile?.role === 'admin')
-        await loadTask()
+        setIsAdmin(profileResult.data?.role === 'admin')
+        setTask(taskData)
+        setComments(commentsData)
+
+        // Get task status from task data (fallback to 'open')
+        if (taskData) {
+            setTaskStatus(taskData.status || 'open')
+        }
+        setLoading(false)
     }
 
     const loadTask = async () => {

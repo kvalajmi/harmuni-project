@@ -30,19 +30,20 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
             return
         }
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
+        // PARALLEL LOADING: Load profile check and employee data at the same time! 🚀
+        const [profileResult, employeeData] = await Promise.all([
+            supabase.from('profiles').select('role').eq('id', user.id).single(),
+            getEmployeeProfileAction(id)
+        ])
 
-        if (profile?.role !== 'admin') {
+        if (profileResult.data?.role !== 'admin') {
             router.push('/dashboard')
             return
         }
 
         setIsAdmin(true)
-        await loadData()
+        setData(employeeData)
+        setLoading(false)
     }
 
     const loadData = async () => {

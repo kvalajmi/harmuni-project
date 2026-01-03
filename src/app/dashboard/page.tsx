@@ -60,7 +60,7 @@ export default function DashboardPage() {
 
     const loadData = async () => {
         try {
-            // Get current user
+            // Step 1: Get current user (required first)
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) {
                 router.push('/login')
@@ -68,7 +68,7 @@ export default function DashboardPage() {
             }
             setUser(user)
 
-            // Get profile
+            // Step 2: Get profile (needed for role-based loading)
             const { data: profileData } = await supabase
                 .from('profiles')
                 .select('*')
@@ -77,11 +77,27 @@ export default function DashboardPage() {
 
             setProfile(profileData)
 
-            // ADMIN: Fetch tasks CREATED by this user (uses server action)
-            if (profileData?.role === 'admin') {
-                const createdTasks = await getCreatedTasksAction(user.id)
+            // Step 3: PARALLEL LOADING - Load all data at once based on role! 🚀
+            const isAdmin = profileData?.role === 'admin'
+
+            if (isAdmin) {
+                // ADMIN: Load all admin data in parallel
+                const [
+                    createdTasks,
+                    assignmentsData,
+                    notificationsData,
+                    adminCirculars,
+                    employeesData
+                ] = await Promise.all([
+                    getCreatedTasksAction(user.id),
+                    getAssignedTasksAction(user.id),
+                    getNotificationsAction(user.id),
+                    getAdminCircularsAction(user.id),
+                    getEmployeesAction()
+                ])
+
+                // Process created tasks (admin stats)
                 if (createdTasks && createdTasks.length > 0) {
-                    // Calculate totals from all tasks
                     const totalPending = createdTasks.reduce((sum, t) => sum + t.pending_count, 0)
                     const totalCompleted = createdTasks.reduce((sum, t) => sum + t.completed_count, 0)
 
@@ -98,40 +114,38 @@ export default function DashboardPage() {
                     setAdminTasks([])
                     setStats({ pending: 0, completed: 0, total: 0 })
                 }
-            }
 
-            // STAFF: Get task assignments using server action (bypasses RLS)
-            const assignmentsData = await getAssignedTasksAction(user.id)
+                // Set other data
+                setTasks(assignmentsData || [])
+                setNotifications(notificationsData as Notification[])
+                setCirculars(adminCirculars)
+                setEmployees(employeesData)
 
-            if (assignmentsData && assignmentsData.length > 0) {
-                setTasks(assignmentsData)
-                // Only set stats for non-admin (admin stats set above)
-                if (profileData?.role !== 'admin') {
+            } else {
+                // STAFF: Load all staff data in parallel
+                const [
+                    assignmentsData,
+                    notificationsData,
+                    staffCirculars
+                ] = await Promise.all([
+                    getAssignedTasksAction(user.id),
+                    getNotificationsAction(user.id),
+                    getStaffCircularsAction(user.id)
+                ])
+
+                // Process assignments (staff stats)
+                if (assignmentsData && assignmentsData.length > 0) {
+                    setTasks(assignmentsData)
                     const pending = assignmentsData.filter(a => a.status === 'pending' || a.status === 'in_progress').length
                     const completed = assignmentsData.filter(a => a.status === 'completed').length
                     setStats({ pending, completed, total: assignmentsData.length })
-                }
-            } else {
-                setTasks([])
-                if (profileData?.role !== 'admin') {
+                } else {
+                    setTasks([])
                     setStats({ pending: 0, completed: 0, total: 0 })
                 }
-            }
 
-            // Get notifications using server action (bypasses RLS)
-            const notificationsData = await getNotificationsAction(user.id)
-            setNotifications(notificationsData as Notification[])
-
-            // Get circulars based on role
-            if (profileData?.role === 'admin') {
-                const adminCirculars = await getAdminCircularsAction(user.id)
-                setCirculars(adminCirculars)
-
-                // Load employees for admin (for follow-up tab)
-                const employeesData = await getEmployeesAction()
-                setEmployees(employeesData)
-            } else {
-                const staffCirculars = await getStaffCircularsAction(user.id)
+                // Set other data
+                setNotifications(notificationsData as Notification[])
                 setCirculars(staffCirculars)
             }
 

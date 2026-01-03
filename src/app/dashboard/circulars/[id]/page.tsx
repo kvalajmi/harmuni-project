@@ -37,14 +37,22 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
         }
         setUserId(user.id)
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
+        // PARALLEL LOADING: Load profile and circular data at the same time! 🚀
+        const [profileResult, circularData] = await Promise.all([
+            supabase.from('profiles').select('role').eq('id', user.id).single(),
+            getCircularDetailsAction(id)
+        ])
 
-        setIsAdmin(profile?.role === 'admin')
-        await loadCircular(user.id)
+        setIsAdmin(profileResult.data?.role === 'admin')
+        setCircular(circularData)
+
+        // Check if current user has read this circular
+        if (circularData) {
+            const userRecipient = circularData.recipients.find(r => r.user_id === user.id)
+            setHasRead(userRecipient?.is_read || false)
+        }
+
+        setLoading(false)
     }
 
     const loadCircular = async (currentUserId: string) => {

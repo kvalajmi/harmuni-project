@@ -34,19 +34,22 @@ export default function StaffPage() {
             return
         }
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
+        // PARALLEL LOADING: Load profile, employees, and groups at the same time! 🚀
+        const [profileResult, employeesData, groupsData] = await Promise.all([
+            supabase.from('profiles').select('role').eq('id', user.id).single(),
+            getEmployeesAction(),
+            getGroupsAction()
+        ])
 
-        if (profile?.role !== 'admin') {
+        if (profileResult.data?.role !== 'admin') {
             router.push('/dashboard')
             return
         }
 
         setIsAdmin(true)
-        await loadData()
+        setEmployees(employeesData)
+        setGroups(groupsData)
+        setLoading(false)
     }
 
     const loadData = async () => {
