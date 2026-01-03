@@ -387,17 +387,25 @@ export async function getAdminTasksWithAssignmentsAction(userId: string): Promis
         if (!tasks || tasks.length === 0) return []
 
         // Get all assignments with user info
-        const { data: assignments } = await supabaseAdmin
+        const { data: assignments, error: assignmentsError } = await supabaseAdmin
             .from('task_assignments')
             .select('id, task_id, user_id, status, completed_at')
             .in('task_id', tasks.map(t => t.id))
 
-        // Get employee profiles
+        console.log('[getAdminTasksWithAssignments] Assignments found:', assignments?.length, 'Error:', assignmentsError)
+
+        // Get employee profiles (without email - email is in auth.users)
         const userIds = [...new Set(assignments?.map(a => a.user_id) || [])]
-        const { data: profiles } = await supabaseAdmin
+        const { data: profiles, error: profilesError } = await supabaseAdmin
             .from('profiles')
-            .select('id, full_name, email')
+            .select('id, full_name')
             .in('id', userIds)
+
+        console.log('[getAdminTasksWithAssignments] Profiles found:', profiles?.length, 'Error:', profilesError)
+
+        // Get emails from auth users
+        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+        const emailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
 
         const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
 
@@ -407,7 +415,7 @@ export async function getAdminTasksWithAssignmentsAction(userId: string): Promis
                 id: a.id,
                 user_id: a.user_id,
                 employee_name: profileMap.get(a.user_id)?.full_name || 'غير معروف',
-                employee_email: profileMap.get(a.user_id)?.email || '',
+                employee_email: emailMap.get(a.user_id) || '',
                 status: a.status as 'pending' | 'in_progress' | 'completed' | 'rejected',
                 completed_at: a.completed_at
             }))
