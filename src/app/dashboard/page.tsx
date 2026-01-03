@@ -85,7 +85,7 @@ export default function DashboardPage() {
     const { data: employeesData } = useEmployeesWithStats()
     const { data: assignedTasksData } = useAssignedTasks(userId)
     const { data: createdTasksData } = useCreatedTasks(isAdmin ? userId : null)
-    const { data: adminTasksWithAssignmentsData, mutate: mutateAdminTasks } = useAdminTasksWithAssignments(isAdmin ? userId : null)
+    const { data: adminTasksWithAssignmentsData, isLoading: isLoadingAdminTasks, mutate: mutateAdminTasks } = useAdminTasksWithAssignments(isAdmin ? userId : null)
     const { data: notificationsData, mutate: mutateNotifications } = useNotifications(userId)
     const { data: adminCircularsData } = useAdminCirculars(isAdmin ? userId : null)
     const { data: staffCircularsData } = useStaffCirculars(!isAdmin ? userId : null)
@@ -350,6 +350,7 @@ export default function DashboardPage() {
                                 tasks={tasks}
                                 adminTasks={adminTasks}
                                 isAdmin={profile?.role === 'admin'}
+                                isLoadingAdminTasks={isLoadingAdminTasks}
                                 onRefresh={loadData}
                                 mutateAdminTasks={mutateAdminTasks}
                             />
@@ -683,10 +684,11 @@ function TaskItem({ assignment }: { assignment: AssignedTask }) {
 }
 
 // Tasks Tab Component - Different views for Admin vs Staff
-function TasksTab({ tasks, adminTasks, isAdmin, onRefresh, mutateAdminTasks }: {
+function TasksTab({ tasks, adminTasks, isAdmin, isLoadingAdminTasks, onRefresh, mutateAdminTasks }: {
     tasks: AssignedTask[]
     adminTasks: AdminTaskWithAssignments[]
     isAdmin: boolean
+    isLoadingAdminTasks: boolean
     onRefresh: () => void
     mutateAdminTasks: () => void
 }) {
@@ -749,6 +751,11 @@ function TasksTab({ tasks, adminTasks, isAdmin, onRefresh, mutateAdminTasks }: {
 
     // ADMIN VIEW - Show tasks created by admin with assignments table
     if (isAdmin) {
+        // Show skeleton while loading
+        if (isLoadingAdminTasks) {
+            return <AdminTasksListSkeleton />
+        }
+
         return (
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
