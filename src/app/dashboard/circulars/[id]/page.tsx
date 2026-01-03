@@ -127,7 +127,7 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
                 <div className="text-center">
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">التعميم غير موجود</h2>
-                    <Button onClick={() => router.push('/dashboard')}>العودة للوحة التحكم</Button>
+                    <Button onClick={() => router.push('/dashboard?tab=circulars')}>العودة للوحة التحكم</Button>
                 </div>
             </div>
         )
@@ -141,7 +141,7 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
             {/* Header */}
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/50">
                 <div className="flex items-center gap-3 px-4 py-4">
-                    <button onClick={() => router.push('/dashboard')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <button onClick={() => router.push('/dashboard?tab=circulars')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>

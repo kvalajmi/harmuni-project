@@ -212,7 +212,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
             {/* Header */}
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/50">
                 <div className="flex items-center gap-3 px-4 py-4">
-                    <button onClick={() => router.push('/dashboard')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <button onClick={() => router.push(isAdmin ? '/dashboard?tab=employees' : '/dashboard?tab=tasks')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
