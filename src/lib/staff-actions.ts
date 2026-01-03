@@ -429,13 +429,18 @@ export async function getAdminTasksWithAssignmentsAction(userId: string): Promis
 // Admin marks an assignment as completed
 export async function adminMarkAssignmentCompleteAction(assignmentId: string): Promise<{ success: boolean }> {
     try {
-        await supabaseAdmin
+        const { error } = await supabaseAdmin
             .from('task_assignments')
             .update({
                 status: 'completed',
-                completed_at: new Date().toISOString()
+                updated_at: new Date().toISOString()
             })
             .eq('id', assignmentId)
+
+        if (error) {
+            console.error('Admin mark complete DB error:', error)
+            return { success: false }
+        }
 
         revalidatePath('/dashboard')
         return { success: true }
