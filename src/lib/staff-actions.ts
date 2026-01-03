@@ -389,7 +389,7 @@ export async function getAdminTasksWithAssignmentsAction(userId: string): Promis
         // Get all assignments with user info
         const { data: assignments, error: assignmentsError } = await supabaseAdmin
             .from('task_assignments')
-            .select('id, task_id, user_id, status, completed_at')
+            .select('id, task_id, user_id, status, updated_at')
             .in('task_id', tasks.map(t => t.id))
 
         console.log('[getAdminTasksWithAssignments] Assignments found:', assignments?.length, 'Error:', assignmentsError)
@@ -417,7 +417,7 @@ export async function getAdminTasksWithAssignmentsAction(userId: string): Promis
                 employee_name: profileMap.get(a.user_id)?.full_name || 'غير معروف',
                 employee_email: emailMap.get(a.user_id) || '',
                 status: a.status as 'pending' | 'in_progress' | 'completed' | 'rejected',
-                completed_at: a.completed_at
+                completed_at: a.updated_at
             }))
         }))
     } catch (error) {
