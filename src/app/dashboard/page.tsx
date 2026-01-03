@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import useSWR, { mutate } from 'swr'
 import { supabase } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
 import { Profile, Task, TaskAssignment, Notification } from '@/lib/supabase'
@@ -10,8 +11,17 @@ import { CreateTaskDrawer } from '@/components/create-task-drawer'
 import { CreateCircularDrawer } from '@/components/create-circular-drawer'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { PushNotificationToggle } from '@/components/push-notification-toggle'
-import { getAssignedTasksAction, getNotificationsAction, markNotificationReadAction, AssignedTask, getCreatedTasksAction, getEmployeesWithStatsAction, EmployeeWithStats } from '@/lib/staff-actions'
-import { getAdminCircularsAction, getStaffCircularsAction, Circular } from '@/lib/circular-actions'
+import { markNotificationReadAction, AssignedTask, EmployeeWithStats } from '@/lib/staff-actions'
+import {
+    useEmployeesWithStats,
+    useAssignedTasks,
+    useCreatedTasks,
+    useNotifications,
+    useAdminCirculars,
+    useStaffCirculars,
+    mutationKeys
+} from '@/lib/hooks'
+import { Circular } from '@/lib/circular-actions'
 import {
     HomeTabSkeleton,
     AdminTasksListSkeleton,
@@ -42,120 +52,91 @@ interface AdminTask {
 export default function DashboardPage() {
     const [user, setUser] = useState<User | null>(null)
     const [profile, setProfile] = useState<Profile | null>(null)
-    const [loading, setLoading] = useState(true)
+    const [authLoading, setAuthLoading] = useState(true)
     const [activeTab, setActiveTab] = useState<TabType>('home')
-    const [stats, setStats] = useState({ pending: 0, completed: 0, total: 0 })
-    const [tasks, setTasks] = useState<AssignedTask[]>([])
-    const [adminTasks, setAdminTasks] = useState<AdminTask[]>([])
-    const [notifications, setNotifications] = useState<Notification[]>([])
-    const [circulars, setCirculars] = useState<(Circular | StaffCircular)[]>([])
-    const [employees, setEmployees] = useState<EmployeeWithStats[]>([])
     const [showCreateTask, setShowCreateTask] = useState(false)
     const [showCreateCircular, setShowCreateCircular] = useState(false)
     const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false)
     const router = useRouter()
 
+    const isAdmin = profile?.role === 'admin'
+    const userId = user?.id || null
+
+    // SWR Hooks - تحميل البيانات مع التخزين المؤقت 🚀
+    const { data: employeesData } = useEmployeesWithStats()
+    const { data: assignedTasksData } = useAssignedTasks(userId)
+    const { data: createdTasksData } = useCreatedTasks(isAdmin ? userId : null)
+    const { data: notificationsData, mutate: mutateNotifications } = useNotifications(userId)
+    const { data: adminCircularsData } = useAdminCirculars(isAdmin ? userId : null)
+    const { data: staffCircularsData } = useStaffCirculars(!isAdmin ? userId : null)
+
+    // Derived data
+    const employees = employeesData || []
+    const tasks = assignedTasksData || []
+    const adminTasks = (createdTasksData || []).map(t => ({
+        id: t.id,
+        title: t.title,
+        description: null,
+        created_at: t.created_at,
+        is_archived: false,
+        assignment_count: t.assignment_count
+    }))
+    const notifications = (notificationsData || []) as Notification[]
+    const circulars = (isAdmin ? adminCircularsData : staffCircularsData) || []
+
+    // Calculate stats
+    const stats = isAdmin
+        ? {
+            pending: (createdTasksData || []).reduce((sum, t) => sum + t.pending_count, 0),
+            completed: (createdTasksData || []).reduce((sum, t) => sum + t.completed_count, 0),
+            total: (createdTasksData || []).reduce((sum, t) => sum + t.pending_count + t.completed_count, 0)
+        }
+        : {
+            pending: tasks.filter(a => a.status === 'pending' || a.status === 'in_progress').length,
+            completed: tasks.filter(a => a.status === 'completed').length,
+            total: tasks.length
+        }
+
+    // Auth check - runs once
     useEffect(() => {
-        loadData()
+        checkAuth()
     }, [])
 
-    const loadData = async () => {
-        try {
-            // Step 1: Get current user (required first)
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) {
-                router.push('/login')
-                return
-            }
-            setUser(user)
-
-            // Step 2: Get profile (needed for role-based loading)
-            const { data: profileData } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single()
-
-            setProfile(profileData)
-
-            // Step 3: PARALLEL LOADING - Load all data at once based on role! 🚀
-            const isAdmin = profileData?.role === 'admin'
-
-            if (isAdmin) {
-                // ADMIN: Load all admin data in parallel
-                const [
-                    createdTasks,
-                    assignmentsData,
-                    notificationsData,
-                    adminCirculars,
-                    employeesData
-                ] = await Promise.all([
-                    getCreatedTasksAction(user.id),
-                    getAssignedTasksAction(user.id),
-                    getNotificationsAction(user.id),
-                    getAdminCircularsAction(user.id),
-                    getEmployeesWithStatsAction()
-                ])
-
-                // Process created tasks (admin stats)
-                if (createdTasks && createdTasks.length > 0) {
-                    const totalPending = createdTasks.reduce((sum, t) => sum + t.pending_count, 0)
-                    const totalCompleted = createdTasks.reduce((sum, t) => sum + t.completed_count, 0)
-
-                    setAdminTasks(createdTasks.map(t => ({
-                        id: t.id,
-                        title: t.title,
-                        description: null,
-                        created_at: t.created_at,
-                        is_archived: false,
-                        assignment_count: t.assignment_count
-                    })))
-                    setStats({ pending: totalPending, completed: totalCompleted, total: totalPending + totalCompleted })
-                } else {
-                    setAdminTasks([])
-                    setStats({ pending: 0, completed: 0, total: 0 })
-                }
-
-                // Set other data
-                setTasks(assignmentsData || [])
-                setNotifications(notificationsData as Notification[])
-                setCirculars(adminCirculars)
-                setEmployees(employeesData)
-
-            } else {
-                // STAFF: Load all staff data in parallel
-                const [
-                    assignmentsData,
-                    notificationsData,
-                    staffCirculars
-                ] = await Promise.all([
-                    getAssignedTasksAction(user.id),
-                    getNotificationsAction(user.id),
-                    getStaffCircularsAction(user.id)
-                ])
-
-                // Process assignments (staff stats)
-                if (assignmentsData && assignmentsData.length > 0) {
-                    setTasks(assignmentsData)
-                    const pending = assignmentsData.filter(a => a.status === 'pending' || a.status === 'in_progress').length
-                    const completed = assignmentsData.filter(a => a.status === 'completed').length
-                    setStats({ pending, completed, total: assignmentsData.length })
-                } else {
-                    setTasks([])
-                    setStats({ pending: 0, completed: 0, total: 0 })
-                }
-
-                // Set other data
-                setNotifications(notificationsData as Notification[])
-                setCirculars(staffCirculars)
-            }
-
-        } catch (error) {
-            console.error('Error loading data:', error)
-        } finally {
-            setLoading(false)
+    const checkAuth = async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+            router.push('/login')
+            return
         }
+        setUser(user)
+
+        const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+
+        setProfile(profileData)
+        setAuthLoading(false)
     }
+
+    // Refresh data - للتحديث اليدوي
+    const loadData = useCallback(() => {
+        if (userId) {
+            mutate(mutationKeys.employees)
+            mutate(mutationKeys.assignedTasks(userId))
+            mutate(mutationKeys.notifications(userId))
+            if (isAdmin) {
+                mutate(mutationKeys.createdTasks(userId))
+                mutate(mutationKeys.adminCirculars(userId))
+            } else {
+                mutate(mutationKeys.staffCirculars(userId))
+            }
+        }
+    }, [userId, isAdmin])
+
+    // Loading state
+    const loading = authLoading || (!profile && !user)
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
@@ -378,13 +359,23 @@ export default function DashboardPage() {
                         active={activeTab === 'home'}
                         onClick={() => setActiveTab('home')}
                     />
-                    <NavItem
-                        icon={<TasksIcon />}
-                        label="المهام"
-                        active={activeTab === 'tasks'}
-                        onClick={() => setActiveTab('tasks')}
-                        badge={stats.pending > 0 ? stats.pending : undefined}
-                    />
+                    {/* المدير: متابعة المهام | الموظف: مهامي */}
+                    {profile?.role === 'admin' ? (
+                        <NavItem
+                            icon={<EmployeesIcon />}
+                            label="متابعة"
+                            active={activeTab === 'employees'}
+                            onClick={() => setActiveTab('employees')}
+                        />
+                    ) : (
+                        <NavItem
+                            icon={<TasksIcon />}
+                            label="مهامي"
+                            active={activeTab === 'tasks'}
+                            onClick={() => setActiveTab('tasks')}
+                            badge={stats.pending > 0 ? stats.pending : undefined}
+                        />
+                    )}
                     <NavItem
                         icon={<CircularsIcon />}
                         label="التعاميم"
@@ -392,15 +383,6 @@ export default function DashboardPage() {
                         onClick={() => setActiveTab('circulars')}
                         badge={unreadCirculars > 0 ? unreadCirculars : undefined}
                     />
-                    {/* التنبيهات نُقلت للـ Header - لم نعد نحتاج Tab منفصل */}
-                    {profile?.role === 'admin' && (
-                        <NavItem
-                            icon={<EmployeesIcon />}
-                            label="متابعة"
-                            active={activeTab === 'employees'}
-                            onClick={() => setActiveTab('employees')}
-                        />
-                    )}
                     <NavItem
                         icon={<ProfileIcon />}
                         label="حسابي"

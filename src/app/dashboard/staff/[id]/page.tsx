@@ -1,63 +1,65 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { use } from 'react'
+import { mutate } from 'swr'
 import { supabase } from '@/lib/supabase'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { getEmployeeProfileAction, markAssignmentCompletedAction, sendTaskReminderAction, EmployeeProfileData, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
+import { markAssignmentCompletedAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
+import { useEmployeeProfile, mutationKeys } from '@/lib/hooks'
 
 type TabType = 'active' | 'completed' | 'circulars'
 
 export default function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
-    const [data, setData] = useState<EmployeeProfileData | null>(null)
-    const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState<TabType>('active')
     const [isAdmin, setIsAdmin] = useState(false)
+    const [authChecked, setAuthChecked] = useState(false)
     const router = useRouter()
 
+    // SWR Hook للتخزين المؤقت 🚀
+    const { data, isLoading, mutate: mutateProfile } = useEmployeeProfile(authChecked ? id : null)
+
+    const loading = !authChecked || isLoading
+
     useEffect(() => {
-        checkAdminAndLoad()
+        checkAdmin()
     }, [id])
 
-    const checkAdminAndLoad = async () => {
+    const checkAdmin = async () => {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
             router.push('/login')
             return
         }
 
-        // PARALLEL LOADING: Load profile check and employee data at the same time! 🚀
-        const [profileResult, employeeData] = await Promise.all([
-            supabase.from('profiles').select('role').eq('id', user.id).single(),
-            getEmployeeProfileAction(id)
-        ])
+        const { data: profileResult } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
 
-        if (profileResult.data?.role !== 'admin') {
+        if (profileResult?.role !== 'admin') {
             router.push('/dashboard')
             return
         }
 
         setIsAdmin(true)
-        setData(employeeData)
-        setLoading(false)
+        setAuthChecked(true)
     }
 
-    const loadData = async () => {
-        setLoading(true)
-        const result = await getEmployeeProfileAction(id)
-        setData(result)
-        setLoading(false)
-    }
+    const loadData = useCallback(() => {
+        mutateProfile()
+    }, [mutateProfile])
 
     const handleMarkCompleted = async (assignmentId: string) => {
         const result = await markAssignmentCompletedAction(assignmentId)
         if (result.success) {
-            await loadData()
+            loadData()
         }
     }
 
