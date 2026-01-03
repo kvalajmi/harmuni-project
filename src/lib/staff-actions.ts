@@ -373,13 +373,16 @@ export interface AdminTaskWithAssignments {
 }
 
 export async function getAdminTasksWithAssignmentsAction(userId: string): Promise<AdminTaskWithAssignments[]> {
+    console.log('[getAdminTasksWithAssignments] Called with userId:', userId)
     try {
-        const { data: tasks } = await supabaseAdmin
+        const { data: tasks, error: tasksError } = await supabaseAdmin
             .from('tasks')
             .select('id, title, description, created_at')
             .eq('created_by', userId)
             .eq('is_archived', false)
             .order('created_at', { ascending: false })
+
+        console.log('[getAdminTasksWithAssignments] Tasks found:', tasks?.length, 'Error:', tasksError)
 
         if (!tasks || tasks.length === 0) return []
 
