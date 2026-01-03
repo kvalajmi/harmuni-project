@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendReminderEmail } from '@/lib/email'
 
 // Supabase Admin Client - created lazily to avoid build-time errors
 function getSupabaseAdmin() {
@@ -15,39 +16,33 @@ function getSupabaseAdmin() {
     })
 }
 
-// OneSignal function
-async function sendPushNotification(supabaseAdmin: ReturnType<typeof getSupabaseAdmin>, userIds: string[], title: string, body: string, notificationUrl: string) {
-    if (!process.env.ONESIGNAL_APP_ID || !process.env.ONESIGNAL_API_KEY) {
-        console.log('[Reminder] OneSignal not configured')
+// OneSignal Configuration
+const ONESIGNAL_APP_ID = '6d710068-0d52-4ca5-8aa2-79d89d525c27'
+const ONESIGNAL_REST_API_KEY = 'os_v2_app_nvyqa2ankjgklcvcphmj2us4e767ntwyf4lu5o5u4ujixrlk6bsp5egys46zvwjqzxyhqan3k2psu2fcktoirnvpg7ezrwlncbzltbq'
+
+// OneSignal function - using external_id (same as your existing system)
+async function sendPushNotification(userIds: string[], title: string, body: string, notificationUrl: string) {
+    if (userIds.length === 0) {
+        console.log('[Reminder] No users to notify')
         return
     }
 
     try {
-        // Get OneSignal player IDs for these users
-        const { data: subscriptions } = await supabaseAdmin
-            .from('push_subscriptions')
-            .select('player_id')
-            .in('user_id', userIds)
-            .not('player_id', 'is', null)
-
-        if (!subscriptions || subscriptions.length === 0) {
-            console.log('[Reminder] No push subscriptions found for users')
-            return
-        }
-
-        const playerIds = subscriptions.map((s: { player_id: string }) => s.player_id).filter(Boolean)
-
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Basic ${process.env.ONESIGNAL_API_KEY}`
+                'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`
             },
             body: JSON.stringify({
-                app_id: process.env.ONESIGNAL_APP_ID,
-                include_player_ids: playerIds,
-                headings: { en: title, ar: title },
-                contents: { en: body, ar: body },
+                app_id: ONESIGNAL_APP_ID,
+                // Use include_aliases with external_id (matches your existing setup)
+                include_aliases: {
+                    external_id: userIds
+                },
+                target_channel: 'push',
+                headings: { ar: title, en: title },
+                contents: { ar: body, en: body },
                 url: notificationUrl
             })
         })
@@ -125,6 +120,19 @@ export async function GET(request: Request) {
                 userTasksMap.set(assignment.user_id, existing)
             }
 
+            // Get user profiles for email
+            const userIds = Array.from(userTasksMap.keys())
+            const { data: profiles } = await supabaseAdmin
+                .from('profiles')
+                .select('id, full_name, email:id')
+                .in('id', userIds)
+
+            // Also get auth emails
+            const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+            const authEmailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
+
+            const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || [])
+
             // Send notifications per user
             for (const [userId, tasks] of userTasksMap.entries()) {
                 const taskCount = tasks.length
@@ -136,7 +144,23 @@ export async function GET(request: Request) {
                     ? `https://opsroom.vercel.app/dashboard/tasks/${tasks[0].taskId}`
                     : 'https://opsroom.vercel.app/dashboard?tab=tasks'
 
-                await sendPushNotification(supabaseAdmin, [userId], title, body, url)
+                // Send Push Notification
+                await sendPushNotification([userId], title, body, url)
+
+                // Send Email
+                const userEmail = authEmailMap.get(userId)
+                const userName = profileMap.get(userId) || 'مستخدم'
+                if (userEmail) {
+                    await sendReminderEmail({
+                        to: userEmail,
+                        recipientName: userName,
+                        type: 'task',
+                        items: tasks.map(t => ({
+                            title: t.title,
+                            url: `https://opsroom.vercel.app/dashboard/tasks/${t.taskId}`
+                        }))
+                    })
+                }
 
                 // Update reminder_sent_at
                 const assignmentIds = tasks.map(t => t.id)
@@ -193,6 +217,17 @@ export async function GET(request: Request) {
                 userCircularsMap.set(recipient.user_id, existing)
             }
 
+            // Get user profiles for email (if not already fetched)
+            const circularUserIds = Array.from(userCircularsMap.keys())
+            const { data: circularProfiles } = await supabaseAdmin
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', circularUserIds)
+
+            const { data: { users: circularAuthUsers } } = await supabaseAdmin.auth.admin.listUsers()
+            const circularAuthEmailMap = new Map(circularAuthUsers?.map(u => [u.id, u.email]) || [])
+            const circularProfileMap = new Map(circularProfiles?.map(p => [p.id, p.full_name]) || [])
+
             // Send notifications per user
             for (const [userId, circulars] of userCircularsMap.entries()) {
                 const count = circulars.length
@@ -204,7 +239,23 @@ export async function GET(request: Request) {
                     ? `https://opsroom.vercel.app/dashboard/circulars/${circulars[0].circularId}`
                     : 'https://opsroom.vercel.app/dashboard?tab=circulars'
 
-                await sendPushNotification(supabaseAdmin, [userId], title, body, url)
+                // Send Push Notification
+                await sendPushNotification([userId], title, body, url)
+
+                // Send Email
+                const userEmail = circularAuthEmailMap.get(userId)
+                const userName = circularProfileMap.get(userId) || 'مستخدم'
+                if (userEmail) {
+                    await sendReminderEmail({
+                        to: userEmail,
+                        recipientName: userName,
+                        type: 'circular',
+                        items: circulars.map(c => ({
+                            title: c.title,
+                            url: `https://opsroom.vercel.app/dashboard/circulars/${c.circularId}`
+                        }))
+                    })
+                }
 
                 // Update last_reminder_at
                 const recipientIds = circulars.map(c => c.id)
