@@ -31,7 +31,7 @@ import {
 } from '@/components/skeletons'
 
 // Tab types
-type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'employees' | 'profile'
+type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'profile'
 
 // Staff circular type with read status
 interface StaffCircular extends Circular {
@@ -64,7 +64,7 @@ export default function DashboardPage() {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search)
             const tabFromUrl = params.get('tab') as TabType | null
-            if (tabFromUrl && ['home', 'tasks', 'circulars', 'notifications', 'employees', 'profile'].includes(tabFromUrl)) {
+            if (tabFromUrl && ['home', 'tasks', 'circulars', 'notifications', 'profile'].includes(tabFromUrl)) {
                 setActiveTab(tabFromUrl)
             }
         }
@@ -368,9 +368,6 @@ export default function DashboardPage() {
                         {activeTab === 'notifications' && (
                             <NotificationsTab notifications={notifications} onRefresh={loadData} mutateNotifications={mutateNotifications} />
                         )}
-                        {activeTab === 'employees' && profile?.role === 'admin' && (
-                            <EmployeesTab employees={employees} />
-                        )}
                         {activeTab === 'profile' && (
                             <ProfileTab user={user} profile={profile} onSignOut={handleSignOut} />
                         )}
@@ -387,23 +384,13 @@ export default function DashboardPage() {
                         active={activeTab === 'home'}
                         onClick={() => handleTabChange('home')}
                     />
-                    {/* المدير: متابعة المهام | الموظف: مهامي */}
-                    {profile?.role === 'admin' ? (
-                        <NavItem
-                            icon={<EmployeesIcon />}
-                            label="متابعة"
-                            active={activeTab === 'employees'}
-                            onClick={() => handleTabChange('employees')}
-                        />
-                    ) : (
-                        <NavItem
-                            icon={<TasksIcon />}
-                            label="مهامي"
-                            active={activeTab === 'tasks'}
-                            onClick={() => handleTabChange('tasks')}
-                            badge={stats.pending > 0 ? stats.pending : undefined}
-                        />
-                    )}
+                    <NavItem
+                        icon={<TasksIcon />}
+                        label="المهام"
+                        active={activeTab === 'tasks'}
+                        onClick={() => handleTabChange('tasks')}
+                        badge={stats.pending > 0 ? stats.pending : undefined}
+                    />
                     <NavItem
                         icon={<CircularsIcon />}
                         label="التعاميم"
@@ -474,10 +461,23 @@ function HomeTab({ stats, profile, employees }: {
     profile: Profile | null
     employees: EmployeeWithStats[]
 }) {
+    const [filter, setFilter] = useState<EmployeeFilter>('all')
+
     // Filter employees (exclude admins)
     const staffEmployees = employees.filter(emp => emp.role !== 'admin')
     const totalActive = staffEmployees.reduce((sum, e) => sum + e.stats.activeTasks, 0)
     const totalCompleted = staffEmployees.reduce((sum, e) => sum + e.stats.completedTasks, 0)
+
+    const filteredEmployees = staffEmployees.filter(emp => {
+        switch (filter) {
+            case 'has_active':
+                return emp.stats.activeTasks > 0
+            case 'no_tasks':
+                return emp.stats.totalTasks === 0
+            default:
+                return true
+        }
+    })
 
     return (
         <div className="space-y-6">
@@ -543,54 +543,91 @@ function HomeTab({ stats, profile, employees }: {
                         </div>
                     </div>
 
+                    {/* Filter Buttons */}
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        <button
+                            onClick={() => setFilter('all')}
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                }`}
+                        >
+                            الكل ({staffEmployees.length})
+                        </button>
+                        <button
+                            onClick={() => setFilter('has_active')}
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                }`}
+                        >
+                            لديهم نشط ({staffEmployees.filter(e => e.stats.activeTasks > 0).length})
+                        </button>
+                        <button
+                            onClick={() => setFilter('no_tasks')}
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'no_tasks'
+                                ? 'bg-slate-500 text-white'
+                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                }`}
+                        >
+                            بدون مهام ({staffEmployees.filter(e => e.stats.totalTasks === 0).length})
+                        </button>
+                    </div>
+
                     {/* Employees List */}
-                    {staffEmployees.length > 0 ? (
+                    {filteredEmployees.length > 0 ? (
                         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
                             {/* Table Header */}
                             <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                <div className="col-span-6">الموظف</div>
-                                <div className="col-span-3 text-center">نشط</div>
-                                <div className="col-span-3 text-center">مكتمل</div>
+                                <div className="col-span-5">الموظف</div>
+                                <div className="col-span-2 text-center">الكل</div>
+                                <div className="col-span-2 text-center">نشط</div>
+                                <div className="col-span-2 text-center">مكتمل</div>
+                                <div className="col-span-1"></div>
                             </div>
                             {/* Rows */}
                             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                {staffEmployees.slice(0, 5).map(emp => (
+                                {filteredEmployees.map(emp => (
                                     <Link
                                         key={emp.id}
                                         href={`/dashboard/staff/${emp.id}`}
                                         className="grid grid-cols-12 gap-2 p-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors items-center"
                                     >
-                                        <div className="col-span-6 flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                        <div className="col-span-5 flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                                 {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
                                             </div>
                                             <span className="text-sm text-slate-900 dark:text-white truncate">{emp.full_name || emp.email}</span>
                                         </div>
-                                        <div className="col-span-3 text-center">
+                                        <div className="col-span-2 text-center">
+                                            <span className="inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                                {emp.stats.totalTasks}
+                                            </span>
+                                        </div>
+                                        <div className="col-span-2 text-center">
                                             <span className={`inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium ${emp.stats.activeTasks > 0 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
                                                 {emp.stats.activeTasks}
                                             </span>
                                         </div>
-                                        <div className="col-span-3 text-center">
+                                        <div className="col-span-2 text-center">
                                             <span className="inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
                                                 {emp.stats.completedTasks}
                                             </span>
                                         </div>
+                                        <div className="col-span-1 text-left">
+                                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                            </svg>
+                                        </div>
                                     </Link>
                                 ))}
                             </div>
-                            {staffEmployees.length > 5 && (
-                                <Link
-                                    href="/dashboard/staff"
-                                    className="block p-3 text-center text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors border-t border-slate-200 dark:border-slate-700"
-                                >
-                                    عرض الكل ({staffEmployees.length} موظف)
-                                </Link>
-                            )}
                         </div>
                     ) : (
                         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center">
-                            <p className="text-slate-500 dark:text-slate-400">لا يوجد موظفين</p>
+                            <p className="text-slate-500 dark:text-slate-400">
+                                {filter === 'all' ? 'لا يوجد موظفين' : 'لا يوجد موظفين مطابقين للفلتر'}
+                            </p>
                         </div>
                     )}
                 </div>
