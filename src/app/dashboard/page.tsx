@@ -59,6 +59,24 @@ export default function DashboardPage() {
     const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false)
     const router = useRouter()
 
+    // Read tab from URL on mount
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search)
+            const tabFromUrl = params.get('tab') as TabType | null
+            if (tabFromUrl && ['home', 'tasks', 'circulars', 'notifications', 'employees', 'profile'].includes(tabFromUrl)) {
+                setActiveTab(tabFromUrl)
+            }
+        }
+    }, [])
+
+    // Update URL when tab changes (without full navigation)
+    const handleTabChange = (newTab: TabType) => {
+        setActiveTab(newTab)
+        // Update URL without full page reload
+        window.history.replaceState(null, '', `/dashboard?tab=${newTab}`)
+    }
+
     const isAdmin = profile?.role === 'admin'
     const userId = user?.id || null
 
@@ -262,14 +280,12 @@ export default function DashboardPage() {
                                                                 loadData()
                                                             }
                                                         }}
-                                                        className={`p-3 border-b border-slate-100 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${
-                                                            !notification.is_read ? 'bg-blue-50/50 dark:bg-blue-500/10' : ''
-                                                        }`}
+                                                        className={`p-3 border-b border-slate-100 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${!notification.is_read ? 'bg-blue-50/50 dark:bg-blue-500/10' : ''
+                                                            }`}
                                                     >
                                                         <div className="flex items-start gap-3">
-                                                            <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${
-                                                                !notification.is_read ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
-                                                            }`} />
+                                                            <div className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${!notification.is_read ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'
+                                                                }`} />
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="text-sm text-slate-700 dark:text-slate-300 line-clamp-2">
                                                                     {notification.message}
@@ -288,7 +304,7 @@ export default function DashboardPage() {
                                             <button
                                                 onClick={() => {
                                                     setShowNotificationsDropdown(false)
-                                                    setActiveTab('notifications')
+                                                    handleTabChange('notifications')
                                                 }}
                                                 className="w-full p-3 text-center text-sm text-blue-500 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
                                             >
@@ -357,7 +373,7 @@ export default function DashboardPage() {
                         icon={<HomeIcon />}
                         label="الرئيسية"
                         active={activeTab === 'home'}
-                        onClick={() => setActiveTab('home')}
+                        onClick={() => handleTabChange('home')}
                     />
                     {/* المدير: متابعة المهام | الموظف: مهامي */}
                     {profile?.role === 'admin' ? (
@@ -365,14 +381,14 @@ export default function DashboardPage() {
                             icon={<EmployeesIcon />}
                             label="متابعة"
                             active={activeTab === 'employees'}
-                            onClick={() => setActiveTab('employees')}
+                            onClick={() => handleTabChange('employees')}
                         />
                     ) : (
                         <NavItem
                             icon={<TasksIcon />}
                             label="مهامي"
                             active={activeTab === 'tasks'}
-                            onClick={() => setActiveTab('tasks')}
+                            onClick={() => handleTabChange('tasks')}
                             badge={stats.pending > 0 ? stats.pending : undefined}
                         />
                     )}
@@ -380,14 +396,14 @@ export default function DashboardPage() {
                         icon={<CircularsIcon />}
                         label="التعاميم"
                         active={activeTab === 'circulars'}
-                        onClick={() => setActiveTab('circulars')}
+                        onClick={() => handleTabChange('circulars')}
                         badge={unreadCirculars > 0 ? unreadCirculars : undefined}
                     />
                     <NavItem
                         icon={<ProfileIcon />}
                         label="حسابي"
                         active={activeTab === 'profile'}
-                        onClick={() => setActiveTab('profile')}
+                        onClick={() => handleTabChange('profile')}
                     />
                 </div>
             </nav>
@@ -915,31 +931,28 @@ function EmployeesTab({ employees }: { employees: EmployeeWithStats[] }) {
             <div className="flex gap-2 overflow-x-auto pb-2">
                 <button
                     onClick={() => setFilter('all')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                        filter === 'all'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        }`}
                 >
                     الكل ({staffEmployees.length})
                 </button>
                 <button
                     onClick={() => setFilter('has_active')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                        filter === 'has_active'
-                            ? 'bg-amber-500 text-white'
-                            : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        }`}
                 >
                     لديهم نشط ({staffEmployees.filter(e => e.stats.activeTasks > 0).length})
                 </button>
                 <button
                     onClick={() => setFilter('no_tasks')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                        filter === 'no_tasks'
-                            ? 'bg-slate-500 text-white'
-                            : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'no_tasks'
+                        ? 'bg-slate-500 text-white'
+                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        }`}
                 >
                     بدون مهام ({staffEmployees.filter(e => e.stats.totalTasks === 0).length})
                 </button>
@@ -992,22 +1005,20 @@ function EmployeesTab({ employees }: { employees: EmployeeWithStats[] }) {
 
                                 {/* Active Tasks */}
                                 <div className="col-span-2 text-center">
-                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${
-                                        employee.stats.activeTasks > 0
-                                            ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
-                                            : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                                    }`}>
+                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${employee.stats.activeTasks > 0
+                                        ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                                        }`}>
                                         {employee.stats.activeTasks}
                                     </span>
                                 </div>
 
                                 {/* Completed Tasks */}
                                 <div className="col-span-2 text-center">
-                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${
-                                        employee.stats.completedTasks > 0
-                                            ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
-                                            : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                                    }`}>
+                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${employee.stats.completedTasks > 0
+                                        ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                                        }`}>
                                         {employee.stats.completedTasks}
                                     </span>
                                 </div>
