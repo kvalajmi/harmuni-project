@@ -113,6 +113,93 @@ export async function getEmployeesAction(): Promise<Employee[]> {
     }
 }
 
+// Employee with task/circular statistics
+export interface EmployeeWithStats extends Employee {
+    stats: {
+        totalTasks: number
+        activeTasks: number
+        completedTasks: number
+        circularsCount: number
+    }
+}
+
+export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]> {
+    try {
+        // Get all auth users
+        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+
+        // Get profiles
+        const { data: profiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, role, created_at')
+
+        // Get group memberships with group names
+        const { data: memberships } = await supabaseAdmin
+            .from('group_members')
+            .select('user_id, group:groups(id, name)')
+
+        // Get all task assignments
+        const { data: assignments } = await supabaseAdmin
+            .from('task_assignments')
+            .select('user_id, status')
+
+        // Get all circular recipients
+        const { data: circularRecipients } = await supabaseAdmin
+            .from('circular_recipients')
+            .select('user_id')
+
+        const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+        const groupMap = new Map<string, { id: string; name: string }[]>()
+
+        memberships?.forEach(m => {
+            const existing = groupMap.get(m.user_id) || []
+            const group = m.group as unknown as { id: string; name: string } | null
+            if (group && group.id && group.name) {
+                existing.push({ id: group.id, name: group.name })
+            }
+            groupMap.set(m.user_id, existing)
+        })
+
+        // Calculate stats per user
+        const statsMap = new Map<string, { totalTasks: number; activeTasks: number; completedTasks: number }>()
+        assignments?.forEach(a => {
+            const existing = statsMap.get(a.user_id) || { totalTasks: 0, activeTasks: 0, completedTasks: 0 }
+            existing.totalTasks++
+            if (a.status === 'pending' || a.status === 'in_progress') {
+                existing.activeTasks++
+            } else if (a.status === 'completed') {
+                existing.completedTasks++
+            }
+            statsMap.set(a.user_id, existing)
+        })
+
+        // Calculate circular count per user
+        const circularCountMap = new Map<string, number>()
+        circularRecipients?.forEach(r => {
+            circularCountMap.set(r.user_id, (circularCountMap.get(r.user_id) || 0) + 1)
+        })
+
+        return authUsers?.map(u => ({
+            id: u.id,
+            full_name: profileMap.get(u.id)?.full_name || null,
+            email: u.email || '',
+            role: profileMap.get(u.id)?.role || 'member',
+            created_at: profileMap.get(u.id)?.created_at || u.created_at,
+            groups: groupMap.get(u.id) || [],
+            stats: {
+                totalTasks: statsMap.get(u.id)?.totalTasks || 0,
+                activeTasks: statsMap.get(u.id)?.activeTasks || 0,
+                completedTasks: statsMap.get(u.id)?.completedTasks || 0,
+                circularsCount: circularCountMap.get(u.id) || 0
+            }
+        })) || []
+
+    } catch (error) {
+        console.error('Get employees with stats error:', error)
+        return []
+    }
+}
+
 export async function deleteEmployeeAction(userId: string): Promise<{ success: boolean; error?: string }> {
     try {
         await supabaseAdmin.auth.admin.deleteUser(userId)
@@ -320,6 +407,62 @@ export async function addTaskCommentAction(taskId: string, userId: string, conte
         if (error) {
             console.error('Add comment error:', error)
             return { success: false }
+        }
+
+        // Send push notification to relevant users
+        try {
+            // Get sender profile
+            const { data: senderProfile } = await supabaseAdmin
+                .from('profiles')
+                .select('full_name, role')
+                .eq('id', userId)
+                .single()
+
+            // Get task info
+            const { data: task } = await supabaseAdmin
+                .from('tasks')
+                .select('title, created_by')
+                .eq('id', taskId)
+                .single()
+
+            // Get task assignments
+            const { data: assignments } = await supabaseAdmin
+                .from('task_assignments')
+                .select('user_id')
+                .eq('task_id', taskId)
+
+            if (task && senderProfile) {
+                const senderName = senderProfile.full_name || 'مستخدم'
+                const isAdmin = senderProfile.role === 'admin'
+
+                // Determine who should receive the notification
+                let recipientIds: string[] = []
+
+                if (isAdmin) {
+                    // Admin sent message → notify all assigned users
+                    recipientIds = assignments?.map(a => a.user_id).filter(id => id !== userId) || []
+                } else {
+                    // Staff sent message → notify task creator (admin) and other assigned users
+                    const allIds = [task.created_by, ...(assignments?.map(a => a.user_id) || [])]
+                    recipientIds = [...new Set(allIds)].filter(id => id !== userId)
+                }
+
+                if (recipientIds.length > 0) {
+                    // Import and send push notification
+                    const { sendPushNotificationAction } = await import('./onesignal-server')
+
+                    await sendPushNotificationAction({
+                        userIds: recipientIds,
+                        title: `رسالة جديدة - ${task.title}`,
+                        body: `${senderName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+                        url: `https://opsroom.vercel.app/dashboard/tasks/${taskId}`,
+                        data: { taskId, type: 'comment' }
+                    })
+                }
+            }
+        } catch (pushError) {
+            // Don't fail the comment if push notification fails
+            console.error('Push notification error (non-blocking):', pushError)
         }
 
         revalidatePath(`/dashboard/tasks/${taskId}`)
