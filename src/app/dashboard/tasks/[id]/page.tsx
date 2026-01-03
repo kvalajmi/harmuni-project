@@ -41,6 +41,51 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [comments])
 
+    // Realtime subscription for live chat updates
+    useEffect(() => {
+        if (!id) return
+
+        const channel = supabase
+            .channel(`task-comments-${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'task_comments',
+                    filter: `task_id=eq.${id}`
+                },
+                async (payload) => {
+                    console.log('[Realtime] New comment received:', payload)
+
+                    // Get the new comment with user info
+                    const newCommentData = payload.new as { id: string; user_id: string; content: string; created_at: string }
+
+                    // Avoid duplicates (if the current user sent the comment, it's already added)
+                    setComments(prev => {
+                        if (prev.some(c => c.id === newCommentData.id)) {
+                            return prev
+                        }
+
+                        // Fetch fresh comments to get proper user info
+                        getTaskCommentsAction(id).then(updatedComments => {
+                            setComments(updatedComments)
+                        })
+
+                        return prev
+                    })
+                }
+            )
+            .subscribe((status) => {
+                console.log('[Realtime] Subscription status:', status)
+            })
+
+        return () => {
+            console.log('[Realtime] Cleaning up subscription')
+            supabase.removeChannel(channel)
+        }
+    }, [id])
+
     const checkAndLoad = async () => {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
