@@ -133,9 +133,8 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
         // 5. Send email notifications (async, non-blocking)
         let emailsSent = 0
         if (assignments.length > 0) {
-            // Fetch user emails from auth.users using admin API
+            // Fetch user emails - parallel getUserById instead of listUsers! 🚀
             const userIds = assignments.map(a => a.user_id)
-            const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
 
             // Get profiles for names
             const { data: profiles } = await supabaseAdmin
@@ -143,8 +142,15 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
                 .select('id, full_name')
                 .in('id', userIds)
 
+            // Get emails in parallel (much faster than listUsers for small batches)
+            const emailPromises = userIds.map(async (uid) => {
+                const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(uid)
+                return { uid, email: user?.email }
+            })
+            const emailResults = await Promise.all(emailPromises)
+
             const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || [])
-            const userEmailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
+            const userEmailMap = new Map(emailResults.map(r => [r.uid, r.email]))
 
             const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000/dashboard'
 

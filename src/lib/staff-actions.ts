@@ -75,10 +75,7 @@ export async function createEmployeeAction(input: CreateEmployeeInput): Promise<
 
 export async function getEmployeesAction(): Promise<Employee[]> {
     try {
-        // Get all auth users
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-
-        // Get profiles
+        // Get profiles directly (NO listUsers!) 🚀
         const { data: profiles } = await supabaseAdmin
             .from('profiles')
             .select('id, full_name, role, created_at, is_active, deactivated_at')
@@ -88,7 +85,6 @@ export async function getEmployeesAction(): Promise<Employee[]> {
             .from('group_members')
             .select('user_id, group:groups(id, name)')
 
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
         const groupMap = new Map<string, { id: string; name: string }[]>()
 
         memberships?.forEach(m => {
@@ -100,15 +96,15 @@ export async function getEmployeesAction(): Promise<Employee[]> {
             groupMap.set(m.user_id, existing)
         })
 
-        return authUsers?.map(u => ({
-            id: u.id,
-            full_name: profileMap.get(u.id)?.full_name || null,
-            email: u.email || '',
-            role: profileMap.get(u.id)?.role || 'member',
-            created_at: profileMap.get(u.id)?.created_at || u.created_at,
-            groups: groupMap.get(u.id) || [],
-            is_active: profileMap.get(u.id)?.is_active ?? true,
-            deactivated_at: profileMap.get(u.id)?.deactivated_at || null
+        return profiles?.map(p => ({
+            id: p.id,
+            full_name: p.full_name || null,
+            email: '', // Email removed for performance
+            role: p.role || 'member',
+            created_at: p.created_at,
+            groups: groupMap.get(p.id) || [],
+            is_active: p.is_active ?? true,
+            deactivated_at: p.deactivated_at || null
         })) || []
 
     } catch (error) {
@@ -129,33 +125,22 @@ export interface EmployeeWithStats extends Employee {
 
 export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]> {
     try {
-        // Get all auth users
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
+        // PARALLEL loading for speed! 🚀
+        const [profilesResult, membershipsResult, assignmentsResult, circularRecipientsResult] = await Promise.all([
+            supabaseAdmin.from('profiles').select('id, full_name, role, created_at, is_active, deactivated_at'),
+            supabaseAdmin.from('group_members').select('user_id, group:groups(id, name)'),
+            supabaseAdmin.from('task_assignments').select('user_id, status'),
+            supabaseAdmin.from('circular_recipients').select('user_id')
+        ])
 
-        // Get profiles
-        const { data: profiles } = await supabaseAdmin
-            .from('profiles')
-            .select('id, full_name, role, created_at, is_active, deactivated_at')
+        const profiles = profilesResult.data || []
+        const memberships = membershipsResult.data || []
+        const assignments = assignmentsResult.data || []
+        const circularRecipients = circularRecipientsResult.data || []
 
-        // Get group memberships with group names
-        const { data: memberships } = await supabaseAdmin
-            .from('group_members')
-            .select('user_id, group:groups(id, name)')
-
-        // Get all task assignments
-        const { data: assignments } = await supabaseAdmin
-            .from('task_assignments')
-            .select('user_id, status')
-
-        // Get all circular recipients
-        const { data: circularRecipients } = await supabaseAdmin
-            .from('circular_recipients')
-            .select('user_id')
-
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
         const groupMap = new Map<string, { id: string; name: string }[]>()
 
-        memberships?.forEach(m => {
+        memberships.forEach(m => {
             const existing = groupMap.get(m.user_id) || []
             const group = m.group as unknown as { id: string; name: string } | null
             if (group && group.id && group.name) {
@@ -166,7 +151,7 @@ export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]
 
         // Calculate stats per user
         const statsMap = new Map<string, { totalTasks: number; activeTasks: number; completedTasks: number }>()
-        assignments?.forEach(a => {
+        assignments.forEach(a => {
             const existing = statsMap.get(a.user_id) || { totalTasks: 0, activeTasks: 0, completedTasks: 0 }
             existing.totalTasks++
             if (a.status === 'pending' || a.status === 'in_progress') {
@@ -179,26 +164,26 @@ export async function getEmployeesWithStatsAction(): Promise<EmployeeWithStats[]
 
         // Calculate circular count per user
         const circularCountMap = new Map<string, number>()
-        circularRecipients?.forEach(r => {
+        circularRecipients.forEach(r => {
             circularCountMap.set(r.user_id, (circularCountMap.get(r.user_id) || 0) + 1)
         })
 
-        return authUsers?.map(u => ({
-            id: u.id,
-            full_name: profileMap.get(u.id)?.full_name || null,
-            email: u.email || '',
-            role: profileMap.get(u.id)?.role || 'member',
-            created_at: profileMap.get(u.id)?.created_at || u.created_at,
-            groups: groupMap.get(u.id) || [],
-            is_active: profileMap.get(u.id)?.is_active ?? true,
-            deactivated_at: profileMap.get(u.id)?.deactivated_at || null,
+        return profiles.map(p => ({
+            id: p.id,
+            full_name: p.full_name || null,
+            email: '', // Email removed for performance
+            role: p.role || 'member',
+            created_at: p.created_at,
+            groups: groupMap.get(p.id) || [],
+            is_active: p.is_active ?? true,
+            deactivated_at: p.deactivated_at || null,
             stats: {
-                totalTasks: statsMap.get(u.id)?.totalTasks || 0,
-                activeTasks: statsMap.get(u.id)?.activeTasks || 0,
-                completedTasks: statsMap.get(u.id)?.completedTasks || 0,
-                circularsCount: circularCountMap.get(u.id) || 0
+                totalTasks: statsMap.get(p.id)?.totalTasks || 0,
+                activeTasks: statsMap.get(p.id)?.activeTasks || 0,
+                completedTasks: statsMap.get(p.id)?.completedTasks || 0,
+                circularsCount: circularCountMap.get(p.id) || 0
             }
-        })) || []
+        }))
 
     } catch (error) {
         console.error('Get employees with stats error:', error)
@@ -244,31 +229,20 @@ export interface TaskAssignmentDetails {
 
 export async function getTaskDetailsAction(taskId: string): Promise<TaskDetails | null> {
     try {
-        // Get task with creator info
+        // Get task with creator info AND assignments in ONE query! 🚀
         const { data: task, error: taskError } = await supabaseAdmin
             .from('tasks')
             .select(`
                 *,
-                creator:profiles!tasks_created_by_fkey(full_name)
+                creator:profiles!tasks_created_by_fkey(full_name),
+                task_assignments(id, user_id, status, response_note, assigned_at, updated_at, user:profiles(full_name))
             `)
             .eq('id', taskId)
             .single()
 
         if (taskError || !task) return null
 
-        // Get assignments
-        const { data: assignments } = await supabaseAdmin
-            .from('task_assignments')
-            .select(`
-                *,
-                user:profiles(full_name)
-            `)
-            .eq('task_id', taskId)
-            .order('assigned_at', { ascending: true })
-
-        // Get user emails
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-        const emailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
+        const assignments = (task.task_assignments as any[]) || []
 
         return {
             id: task.id,
@@ -279,16 +253,16 @@ export async function getTaskDetailsAction(taskId: string): Promise<TaskDetails 
             is_archived: task.is_archived,
             created_by: task.created_by,
             creator_name: task.creator?.full_name,
-            assignments: assignments?.map(a => ({
+            assignments: assignments.map(a => ({
                 id: a.id,
                 user_id: a.user_id,
-                user_name: a.user?.full_name,
-                user_email: emailMap.get(a.user_id) || '',
+                user_name: a.user?.full_name || 'مستخدم',
+                user_email: '', // Email removed for performance
                 status: a.status,
                 response_note: a.response_note,
                 assigned_at: a.assigned_at,
                 updated_at: a.updated_at
-            })) || []
+            }))
         }
 
     } catch (error) {
@@ -373,49 +347,30 @@ export interface AdminTaskWithAssignments {
 }
 
 export async function getAdminTasksWithAssignmentsAction(userId: string): Promise<AdminTaskWithAssignments[]> {
-    console.log('[getAdminTasksWithAssignments] Called with userId:', userId)
     try {
+        // ONE query with joins - no listUsers! 🚀
         const { data: tasks, error: tasksError } = await supabaseAdmin
             .from('tasks')
-            .select('id, title, description, created_at')
+            .select(`
+                id, title, description, created_at,
+                task_assignments(id, user_id, status, updated_at, user:profiles(full_name))
+            `)
             .eq('created_by', userId)
             .eq('is_archived', false)
             .order('created_at', { ascending: false })
 
-        console.log('[getAdminTasksWithAssignments] Tasks found:', tasks?.length, 'Error:', tasksError)
-
-        if (!tasks || tasks.length === 0) return []
-
-        // Get all assignments with user info
-        const { data: assignments, error: assignmentsError } = await supabaseAdmin
-            .from('task_assignments')
-            .select('id, task_id, user_id, status, updated_at')
-            .in('task_id', tasks.map(t => t.id))
-
-        console.log('[getAdminTasksWithAssignments] Assignments found:', assignments?.length, 'Error:', assignmentsError)
-
-        // Get employee profiles (without email - email is in auth.users)
-        const userIds = [...new Set(assignments?.map(a => a.user_id) || [])]
-        const { data: profiles, error: profilesError } = await supabaseAdmin
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', userIds)
-
-        console.log('[getAdminTasksWithAssignments] Profiles found:', profiles?.length, 'Error:', profilesError)
-
-        // Get emails from auth users
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-        const emailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
-
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || [])
+        if (tasksError || !tasks) return []
 
         return tasks.map(t => ({
-            ...t,
-            assignments: (assignments?.filter(a => a.task_id === t.id) || []).map(a => ({
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            created_at: t.created_at,
+            assignments: ((t.task_assignments as any[]) || []).map(a => ({
                 id: a.id,
                 user_id: a.user_id,
-                employee_name: profileMap.get(a.user_id)?.full_name || 'غير معروف',
-                employee_email: emailMap.get(a.user_id) || '',
+                employee_name: a.user?.full_name || 'غير معروف',
+                employee_email: '', // Email removed for performance
                 status: a.status as 'pending' | 'in_progress' | 'completed' | 'rejected',
                 completed_at: a.updated_at
             }))
@@ -740,17 +695,14 @@ export interface EmployeeProfileData {
 
 export async function getEmployeeProfileAction(employeeId: string): Promise<EmployeeProfileData | null> {
     try {
-        // 1. Get employee profile
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-        const authUser = authUsers?.find(u => u.id === employeeId)
-
-        if (!authUser) return null
-
+        // 1. Get employee profile - NO listUsers! 🚀
         const { data: profileData } = await supabaseAdmin
             .from('profiles')
             .select('id, full_name, role, created_at')
             .eq('id', employeeId)
             .single()
+
+        if (!profileData) return null
 
         // Get groups
         const { data: memberships } = await supabaseAdmin
@@ -765,10 +717,10 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
 
         const profile: EmployeeProfile = {
             id: employeeId,
-            full_name: profileData?.full_name || null,
-            email: authUser.email || '',
-            role: profileData?.role || 'member',
-            created_at: profileData?.created_at || authUser.created_at,
+            full_name: profileData.full_name || null,
+            email: '', // Email removed for performance
+            role: profileData.role || 'member',
+            created_at: profileData.created_at,
             groups
         }
 
@@ -941,11 +893,10 @@ export async function sendTaskReminderAction(
     taskTitle: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
-        // Get employee email from auth
-        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-        const user = users?.find(u => u.id === employeeId)
+        // Get employee email - getUserById instead of listUsers! 🚀
+        const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(employeeId)
 
-        if (!user?.email) {
+        if (error || !user?.email) {
             return { success: false, error: 'البريد الإلكتروني غير موجود' }
         }
 

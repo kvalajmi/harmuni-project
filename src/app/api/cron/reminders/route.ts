@@ -120,16 +120,20 @@ export async function GET(request: Request) {
                 userTasksMap.set(assignment.user_id, existing)
             }
 
-            // Get user profiles for email
+            // Get user profiles for email - NO listUsers! 🚀
             const userIds = Array.from(userTasksMap.keys())
             const { data: profiles } = await supabaseAdmin
                 .from('profiles')
-                .select('id, full_name, email:id')
+                .select('id, full_name')
                 .in('id', userIds)
 
-            // Also get auth emails
-            const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-            const authEmailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
+            // Get emails in parallel (much faster than listUsers)
+            const emailPromises = userIds.map(async (uid) => {
+                const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(uid)
+                return { uid, email: user?.email }
+            })
+            const emailResults = await Promise.all(emailPromises)
+            const authEmailMap = new Map(emailResults.map(r => [r.uid, r.email]))
 
             const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || [])
 
@@ -217,15 +221,20 @@ export async function GET(request: Request) {
                 userCircularsMap.set(recipient.user_id, existing)
             }
 
-            // Get user profiles for email (if not already fetched)
+            // Get user profiles for email - NO listUsers! 🚀
             const circularUserIds = Array.from(userCircularsMap.keys())
             const { data: circularProfiles } = await supabaseAdmin
                 .from('profiles')
                 .select('id, full_name')
                 .in('id', circularUserIds)
 
-            const { data: { users: circularAuthUsers } } = await supabaseAdmin.auth.admin.listUsers()
-            const circularAuthEmailMap = new Map(circularAuthUsers?.map(u => [u.id, u.email]) || [])
+            // Get emails in parallel (much faster than listUsers)
+            const circularEmailPromises = circularUserIds.map(async (uid) => {
+                const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(uid)
+                return { uid, email: user?.email }
+            })
+            const circularEmailResults = await Promise.all(circularEmailPromises)
+            const circularAuthEmailMap = new Map(circularEmailResults.map(r => [r.uid, r.email]))
             const circularProfileMap = new Map(circularProfiles?.map(p => [p.id, p.full_name]) || [])
 
             // Send notifications per user

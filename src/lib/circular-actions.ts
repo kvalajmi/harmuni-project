@@ -266,15 +266,13 @@ export async function getCircularDetailsAction(circularId: string): Promise<Circ
             .eq('circular_id', circularId)
             .order('is_read', { ascending: true })
 
-        // Get user profiles and emails
+        // Get user profiles - NO listUsers! 🚀
         const userIds = recipients?.map(r => r.user_id) || []
         const { data: profiles } = await supabaseAdmin
             .from('profiles')
             .select('id, full_name')
             .in('id', userIds)
 
-        const { data: { users: authUsers } } = await supabaseAdmin.auth.admin.listUsers()
-        const emailMap = new Map(authUsers?.map(u => [u.id, u.email]) || [])
         const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || [])
 
         return {
@@ -285,7 +283,7 @@ export async function getCircularDetailsAction(circularId: string): Promise<Circ
             recipients: recipients?.map(r => ({
                 ...r,
                 user_name: profileMap.get(r.user_id) || 'مستخدم',
-                user_email: emailMap.get(r.user_id) || ''
+                user_email: '' // Email removed for performance
             })) || []
         }
 
@@ -341,11 +339,10 @@ export async function sendCircularReminderAction(
             return { success: false, error: 'التعميم غير موجود' }
         }
 
-        // Get user email
-        const { data: { users } } = await supabaseAdmin.auth.admin.listUsers()
-        const user = users?.find(u => u.id === recipientUserId)
+        // Get user email - getUserById instead of listUsers! 🚀
+        const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(recipientUserId)
 
-        if (!user?.email) {
+        if (userError || !user?.email) {
             return { success: false, error: 'البريد الإلكتروني غير موجود' }
         }
 
