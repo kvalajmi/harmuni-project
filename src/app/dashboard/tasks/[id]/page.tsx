@@ -7,11 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TaskDetailsSkeleton } from '@/components/skeletons'
 import {
     getTaskDetailsAction,
-    updateAssignmentStatusAction,
     TaskDetails,
     getTaskCommentsAction,
     addTaskCommentAction,
@@ -144,11 +142,6 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
         setTaskStatus(newStatus)
     }
 
-    const handleStatusChange = async (assignmentId: string, newStatus: string) => {
-        await updateAssignmentStatusAction(assignmentId, newStatus as 'pending' | 'in_progress' | 'completed' | 'rejected')
-        loadTask()
-    }
-
     const getTimeElapsed = (dateString: string) => {
         const created = new Date(dateString)
         const now = new Date()
@@ -171,8 +164,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
     const statusConfig = {
         pending: { label: 'جديد', color: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' },
         in_progress: { label: 'قيد التنفيذ', color: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' },
-        completed: { label: 'مكتمل', color: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' },
-        rejected: { label: 'مرفوض', color: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400' }
+        completed: { label: 'مكتمل', color: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' }
     }
 
     if (loading) {
@@ -321,7 +313,6 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                             <TableRow className="border-slate-200 dark:border-slate-700/50 hover:bg-transparent">
                                 <TableHead className="text-slate-500 dark:text-slate-400 text-right">الموظف</TableHead>
                                 <TableHead className="text-slate-500 dark:text-slate-400 text-right">الحالة</TableHead>
-                                {isAdmin && <TableHead className="text-slate-500 dark:text-slate-400 text-right w-32">تغيير</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -345,24 +336,6 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                                             {statusConfig[assignment.status as keyof typeof statusConfig]?.label || 'جديد'}
                                         </Badge>
                                     </TableCell>
-                                    {isAdmin && (
-                                        <TableCell>
-                                            <Select
-                                                value={assignment.status}
-                                                onValueChange={(v) => handleStatusChange(assignment.id, v)}
-                                            >
-                                                <SelectTrigger className="h-8 bg-slate-100 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-sm text-slate-900 dark:text-white">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                                                    <SelectItem value="pending">جديد</SelectItem>
-                                                    <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
-                                                    <SelectItem value="completed">مكتمل</SelectItem>
-                                                    <SelectItem value="rejected">مرفوض</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </TableCell>
-                                    )}
                                 </TableRow>
                             ))}
                         </TableBody>

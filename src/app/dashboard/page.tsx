@@ -131,6 +131,13 @@ export default function DashboardPage() {
             .eq('id', user.id)
             .single()
 
+        // التحقق من حالة الحساب - طرد الموقوفين
+        if (profileData && profileData.is_active === false) {
+            await supabase.auth.signOut()
+            router.push('/login?suspended=true')
+            return
+        }
+
         setProfile(profileData)
         setAuthLoading(false)
     }

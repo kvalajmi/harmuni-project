@@ -1,19 +1,27 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function LoginPage() {
+function LoginForm() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
+    const searchParams = useSearchParams()
+
+    // إظهار رسالة إذا تم طرد المستخدم بسبب إيقاف حسابه
+    useEffect(() => {
+        if (searchParams.get('suspended') === 'true') {
+            setError('تم إيقاف حسابك من قبل مدير النظام')
+        }
+    }, [searchParams])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -21,7 +29,7 @@ export default function LoginPage() {
         setError(null)
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             })
@@ -29,6 +37,22 @@ export default function LoginPage() {
             if (error) {
                 setError(error.message)
                 return
+            }
+
+            // التحقق من حالة الحساب (موقوف أم لا)
+            if (data.user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('is_active')
+                    .eq('id', data.user.id)
+                    .single()
+
+                if (profile && profile.is_active === false) {
+                    // تسجيل خروج فوري
+                    await supabase.auth.signOut()
+                    setError('تم إيقاف حسابك من قبل مدير النظام')
+                    return
+                }
             }
 
             router.push('/dashboard')
@@ -166,5 +190,17 @@ export default function LoginPage() {
                 </CardContent>
             </Card>
         </div>
+    )
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        }>
+            <LoginForm />
+        </Suspense>
     )
 }
