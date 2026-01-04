@@ -565,6 +565,7 @@ export interface AssignedTask {
 
 export async function getAssignedTasksAction(userId: string): Promise<AssignedTask[]> {
     try {
+        // Step 1: Get all task assignments for this user
         const { data: assignments, error } = await supabaseAdmin
             .from('task_assignments')
             .select(`
@@ -575,10 +576,9 @@ export async function getAssignedTasksAction(userId: string): Promise<AssignedTa
                 response_note,
                 assigned_at,
                 updated_at,
-                task:tasks!inner(id, title, description, created_at, is_archived)
+                task:tasks(id, title, description, created_at, is_archived)
             `)
             .eq('user_id', userId)
-            .eq('task.is_archived', false)
             .order('assigned_at', { ascending: false })
 
         if (error) {
@@ -586,9 +586,12 @@ export async function getAssignedTasksAction(userId: string): Promise<AssignedTa
             return []
         }
 
-        // فلترة إضافية للتأكد من وجود المهمة
+        // Step 2: Filter out null tasks and archived tasks
         return (assignments || [])
-            .filter(a => a.task !== null && a.task !== undefined)
+            .filter(a => {
+                const task = a.task as unknown as { id: string; is_archived: boolean } | null
+                return task !== null && task !== undefined && task.is_archived === false
+            })
             .map(a => ({
                 ...a,
                 task: a.task as unknown as AssignedTask['task']

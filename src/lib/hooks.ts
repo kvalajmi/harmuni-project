@@ -21,10 +21,11 @@ import { getAdminCircularsAction, getStaffCircularsAction, Circular } from './ci
 
 // SWR Configuration
 const swrConfig = {
-    revalidateOnFocus: false,      // Don't refetch on window focus
+    revalidateOnFocus: true,       // Refetch when user returns to app
     revalidateOnReconnect: true,   // Refetch on reconnect
-    dedupingInterval: 30000,       // Dedupe requests within 30 seconds
+    dedupingInterval: 5000,        // 5 seconds (was 30s - too long!)
     errorRetryCount: 3,
+    refreshInterval: 0,            // No auto refresh by default
 }
 
 // Staff circular type
