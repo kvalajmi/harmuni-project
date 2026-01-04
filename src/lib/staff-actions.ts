@@ -695,7 +695,7 @@ export interface EmployeeProfileData {
 
 export async function getEmployeeProfileAction(employeeId: string): Promise<EmployeeProfileData | null> {
     try {
-        // 1. Get employee profile - NO listUsers! 🚀
+        // STEP 1: Get profile first (to check if exists)
         const { data: profileData } = await supabaseAdmin
             .from('profiles')
             .select('id, full_name, role, created_at')
@@ -704,63 +704,69 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
 
         if (!profileData) return null
 
-        // Get groups
-        const { data: memberships } = await supabaseAdmin
-            .from('group_members')
-            .select('group:groups(id, name)')
-            .eq('user_id', employeeId)
+        // STEP 2: PARALLEL loading for all data! 🚀
+        const [membershipsResult, assignmentsResult, circularsResult] = await Promise.all([
+            supabaseAdmin.from('group_members').select('group:groups(id, name)').eq('user_id', employeeId),
+            supabaseAdmin.from('task_assignments').select(`
+                id, task_id, user_id, status, response_note, assigned_at, updated_at, reminder_sent_at,
+                task:tasks(id, title, description, created_at)
+            `).eq('user_id', employeeId).order('assigned_at', { ascending: false }),
+            supabaseAdmin.from('circular_recipients').select(`
+                id, circular_id, is_read, read_at, created_at,
+                circular:circulars(id, title, content, created_by, created_at)
+            `).eq('user_id', employeeId).order('created_at', { ascending: false })
+        ])
 
-        const groups = memberships?.map(m => {
+        const memberships = membershipsResult.data || []
+        const assignments = assignmentsResult.data || []
+        const circularRecipients = circularsResult.data || []
+
+        // Process groups
+        const groups = memberships.map(m => {
             const group = m.group as unknown as { id: string; name: string } | null
             return group ? { id: group.id, name: group.name } : null
-        }).filter(Boolean) as { id: string; name: string }[] || []
+        }).filter(Boolean) as { id: string; name: string }[]
 
         const profile: EmployeeProfile = {
             id: employeeId,
             full_name: profileData.full_name || null,
-            email: '', // Email removed for performance
+            email: '',
             role: profileData.role || 'member',
             created_at: profileData.created_at,
             groups
         }
 
-        // 2. Get all task assignments for this employee
-        const { data: assignments } = await supabaseAdmin
-            .from('task_assignments')
-            .select(`
-                id,
-                task_id,
-                user_id,
-                status,
-                response_note,
-                assigned_at,
-                updated_at,
-                reminder_sent_at,
-                task:tasks(id, title, description, created_at)
-            `)
-            .eq('user_id', employeeId)
-            .order('assigned_at', { ascending: false })
+        // STEP 3: Get comments and sender profiles in parallel
+        const taskIds = assignments.map(a => a.task_id)
+        const senderIds = [...new Set(circularRecipients.map(r => {
+            const c = r.circular as unknown as { created_by: string } | null
+            return c?.created_by
+        }).filter(Boolean) || [])]
 
-        // Get all comments for these tasks
-        const taskIds = assignments?.map(a => a.task_id) || []
-        const { data: allComments } = await supabaseAdmin
-            .from('task_comments')
-            .select('id, task_id, user_id, content, created_at')
-            .in('task_id', taskIds)
-            .order('created_at', { ascending: true })
+        const [commentsResult, senderProfilesResult] = await Promise.all([
+            taskIds.length > 0
+                ? supabaseAdmin.from('task_comments').select('id, task_id, user_id, content, created_at').in('task_id', taskIds).order('created_at', { ascending: true })
+                : Promise.resolve({ data: [] }),
+            senderIds.length > 0
+                ? supabaseAdmin.from('profiles').select('id, full_name').in('id', senderIds)
+                : Promise.resolve({ data: [] })
+        ])
 
-        // Get commenter profiles
-        const commenterIds = [...new Set(allComments?.map(c => c.user_id) || [])]
-        const { data: commenterProfiles } = await supabaseAdmin
-            .from('profiles')
-            .select('id, full_name, role')
-            .in('id', commenterIds)
+        const allComments = commentsResult.data || []
+        const senderProfiles = senderProfilesResult.data || []
 
-        const commenterMap = new Map(commenterProfiles?.map(p => [p.id, { name: p.full_name, role: p.role }]) || [])
+        // Get commenter profiles (if we have comments)
+        const commenterIds = [...new Set(allComments.map(c => c.user_id))]
+        const commenterProfiles = commenterIds.length > 0
+            ? (await supabaseAdmin.from('profiles').select('id, full_name, role').in('id', commenterIds)).data || []
+            : []
+
+        const commenterMap = new Map(commenterProfiles.map(p => [p.id, { name: p.full_name, role: p.role }]))
+        const senderMap = new Map(senderProfiles.map(p => [p.id, p.full_name]))
 
         // Group comments by task
         const commentsByTask = new Map<string, typeof allComments>()
-        allComments?.forEach(c => {
+        allComments.forEach(c => {
             const existing = commentsByTask.get(c.task_id) || []
             existing.push(c)
             commentsByTask.set(c.task_id, existing)
@@ -770,7 +776,7 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
         const activeTasks: EmployeeTask[] = []
         const completedTasks: EmployeeTask[] = []
 
-        assignments?.forEach(a => {
+        assignments.forEach(a => {
             const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
             if (!task) return
 
@@ -802,33 +808,6 @@ export async function getEmployeeProfileAction(employeeId: string): Promise<Empl
                 activeTasks.push(employeeTask)
             }
         })
-
-        // 3. Get circulars for this employee
-        const { data: circularRecipients } = await supabaseAdmin
-            .from('circular_recipients')
-            .select(`
-                id,
-                circular_id,
-                is_read,
-                read_at,
-                created_at,
-                circular:circulars(id, title, content, created_by, created_at)
-            `)
-            .eq('user_id', employeeId)
-            .order('created_at', { ascending: false })
-
-        // Get sender names
-        const senderIds = [...new Set(circularRecipients?.map(r => {
-            const c = r.circular as unknown as { created_by: string } | null
-            return c?.created_by
-        }).filter(Boolean) || [])]
-
-        const { data: senderProfiles } = await supabaseAdmin
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', senderIds)
-
-        const senderMap = new Map(senderProfiles?.map(p => [p.id, p.full_name]) || [])
 
         const circulars: EmployeeCircular[] = circularRecipients?.map(r => {
             const c = r.circular as unknown as { id: string; title: string; content: string; created_by: string; created_at: string } | null
