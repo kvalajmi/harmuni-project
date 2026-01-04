@@ -575,9 +575,10 @@ export async function getAssignedTasksAction(userId: string): Promise<AssignedTa
                 response_note,
                 assigned_at,
                 updated_at,
-                task:tasks(id, title, description, created_at, is_archived)
+                task:tasks!inner(id, title, description, created_at, is_archived)
             `)
             .eq('user_id', userId)
+            .eq('task.is_archived', false)
             .order('assigned_at', { ascending: false })
 
         if (error) {
@@ -585,10 +586,13 @@ export async function getAssignedTasksAction(userId: string): Promise<AssignedTa
             return []
         }
 
-        return (assignments || []).map(a => ({
-            ...a,
-            task: a.task as unknown as AssignedTask['task']
-        }))
+        // فلترة إضافية للتأكد من وجود المهمة
+        return (assignments || [])
+            .filter(a => a.task !== null && a.task !== undefined)
+            .map(a => ({
+                ...a,
+                task: a.task as unknown as AssignedTask['task']
+            }))
     } catch (error) {
         console.error('Get assigned tasks error:', error)
         return []
