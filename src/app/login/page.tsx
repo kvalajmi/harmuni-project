@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createSupabaseBrowser } from '@/lib/supabase-browser'
+import { signInAction } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,35 +29,23 @@ function LoginForm() {
         setError(null)
 
         try {
-            const supabase = createSupabaseBrowser()
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            })
+            // Use server action for login to ensure proper cookie handling
+            const result = await signInAction(email, password)
 
-            if (error) {
-                setError(error.message)
+            if (!result.success) {
+                setError(result.error === 'Invalid login credentials'
+                    ? 'بيانات الدخول غير صحيحة'
+                    : result.error || 'حدث خطأ في تسجيل الدخول')
+                setLoading(false)
                 return
             }
 
-            // التحقق من حالة الحساب (موقوف أم لا)
-            if (data.user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('is_active')
-                    .eq('id', data.user.id)
-                    .single()
+            console.log('[Login] Success, redirecting to dashboard...')
 
-                if (profile && profile.is_active === false) {
-                    // تسجيل خروج فوري
-                    await supabase.auth.signOut()
-                    setError('تم إيقاف حسابك من قبل مدير النظام')
-                    return
-                }
-            }
-
-            router.push('/dashboard')
-        } catch {
+            // Force a full page reload to ensure cookies are properly set
+            window.location.href = '/dashboard'
+        } catch (err) {
+            console.error('[Login] Exception:', err)
             setError('حدث خطأ غير متوقع')
         } finally {
             setLoading(false)

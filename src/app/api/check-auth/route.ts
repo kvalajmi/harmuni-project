@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 export async function GET() {
     try {
         // Create server-side Supabase client
-        const supabase = createSupabaseServer()
+        const supabase = await createSupabaseServer()
 
         // Get the session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -38,7 +38,7 @@ export async function GET() {
         }
 
         // Check cookies
-        const cookieStore = cookies()
+        const cookieStore = await cookies()
         const supabaseAuthToken = cookieStore.get('sb-auth-token')
         const allCookies = cookieStore.getAll().map(c => ({
             name: c.name,

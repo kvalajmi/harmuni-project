@@ -3,8 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 
 // Create a Supabase client for server components
 // This properly handles cookies and auth sessions in Next.js App Router
-export function createSupabaseServer() {
-    const cookieStore = cookies()
+export async function createSupabaseServer() {
+    const cookieStore = await cookies()
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
