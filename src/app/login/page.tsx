@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,6 +29,7 @@ function LoginForm() {
         setError(null)
 
         try {
+            const supabase = createSupabaseBrowser()
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,

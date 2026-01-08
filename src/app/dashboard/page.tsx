@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import useSWR, { mutate } from 'swr'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useAuth } from '@/lib/auth-context'
 import { Profile, Task, TaskAssignment, Notification } from '@/lib/supabase'
 import { CreateTaskDrawer } from '@/components/create-task-drawer'
@@ -163,6 +163,7 @@ export default function DashboardPage() {
         }
         // Check if account is suspended
         if (!authLoading && profile && profile.is_active === false) {
+            const supabase = createSupabaseBrowser()
             supabase.auth.signOut()
             router.push('/login?suspended=true')
         }
@@ -187,6 +188,7 @@ export default function DashboardPage() {
     const loading = authLoading || (!profile && !user)
 
     const handleSignOut = async () => {
+        const supabase = createSupabaseBrowser()
         await supabase.auth.signOut()
         router.push('/login')
     }

@@ -1,8 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react'
 import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useRouter } from 'next/navigation'
 
 type Profile = {
@@ -38,6 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true)
     const router = useRouter()
 
+    // Create the Supabase client once and reuse it
+    const supabase = useMemo(() => createSupabaseBrowser(), [])
+
     const fetchProfile = async (userId: string) => {
         console.log('[DEBUG] AuthContext - Fetching profile for user:', userId)
 
@@ -47,6 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(null)
             return
         }
+
+        // Check current session before making query
+        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        console.log('[DEBUG] AuthContext - Current session before profile fetch:', {
+            hasSession: !!currentSession,
+            sessionUser: currentSession?.user?.id?.substring(0, 8) + '...',
+            accessToken: currentSession?.access_token?.substring(0, 20) + '...'
+        })
 
         console.log('[DEBUG] AuthContext - Supabase client exists, making query...')
 
@@ -153,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             subscription.unsubscribe()
         }
-    }, [router])
+    }, [router, supabase])
 
     const signIn = async (email: string, password: string) => {
         const { data, error } = await supabase.auth.signInWithPassword({
