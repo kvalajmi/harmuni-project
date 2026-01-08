@@ -39,30 +39,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const router = useRouter()
 
     const fetchProfile = async (userId: string) => {
-        console.log('[DEBUG] AuthContext - Fetching profile for user:', userId?.substring(0, 8) + '...')
+        console.log('[DEBUG] AuthContext - Fetching profile for user:', userId)
 
-        const { data: profileData, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single()
+        // Check if supabase client exists
+        if (!supabase) {
+            console.error('[ERROR] AuthContext - Supabase client is null!')
+            setProfile(null)
+            return
+        }
 
-        console.log('[DEBUG] AuthContext - Profile fetch result:', {
-            userId: userId?.substring(0, 8) + '...',
-            hasData: !!profileData,
-            error: error?.message || null,
-            profile: profileData ? {
-                id: profileData.id?.substring(0, 8) + '...',
-                name: profileData.full_name,
-                role: profileData.role,
-                isActive: profileData.is_active
-            } : null
-        })
+        console.log('[DEBUG] AuthContext - Supabase client exists, making query...')
 
-        if (!error && profileData) {
-            setProfile(profileData)
-        } else {
-            console.error('[ERROR] AuthContext - Error fetching profile:', error)
+        try {
+            const { data: profileData, error, status, statusText } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single()
+
+            console.log('[DEBUG] AuthContext - Profile query response:', {
+                userId: userId,
+                hasData: !!profileData,
+                error: error ? {
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint,
+                    code: error.code
+                } : null,
+                status,
+                statusText,
+                profile: profileData ? {
+                    id: profileData.id,
+                    name: profileData.full_name,
+                    role: profileData.role,
+                    isActive: profileData.is_active
+                } : null
+            })
+
+            if (!error && profileData) {
+                console.log('[DEBUG] AuthContext - Setting profile:', profileData)
+                setProfile(profileData)
+            } else {
+                console.error('[ERROR] AuthContext - Profile fetch failed:', {
+                    error,
+                    userId,
+                    status,
+                    statusText
+                })
+                setProfile(null)
+            }
+        } catch (exception) {
+            console.error('[ERROR] AuthContext - Exception during profile fetch:', exception)
+            console.error('[ERROR] Stack trace:', exception instanceof Error ? exception.stack : 'No stack trace')
             setProfile(null)
         }
     }

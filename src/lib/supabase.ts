@@ -8,14 +8,26 @@ let supabaseInstance: SupabaseClient | null = null
 export const supabase = (() => {
     if (supabaseInstance) return supabaseInstance
 
+    // Debug logging for production issue
+    console.log('[DEBUG] Supabase Client Init:', {
+        hasUrl: !!supabaseUrl,
+        urlStart: supabaseUrl?.substring(0, 30) + '...',
+        hasAnonKey: !!supabaseAnonKey,
+        keyStart: supabaseAnonKey?.substring(0, 20) + '...',
+        isServer: typeof window === 'undefined'
+    })
+
     if (!supabaseUrl || !supabaseAnonKey) {
         // Return a dummy client for build time - will be replaced at runtime
         if (typeof window === 'undefined') {
+            console.warn('[WARNING] Returning null client for server-side build')
             return null as unknown as SupabaseClient
         }
+        console.error('[ERROR] Missing Supabase environment variables in browser context')
         throw new Error('Missing Supabase environment variables')
     }
 
+    console.log('[DEBUG] Creating Supabase client instance...')
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
     return supabaseInstance
 })()
