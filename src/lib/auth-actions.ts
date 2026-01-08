@@ -5,26 +5,27 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 export async function signInAction(email: string, password: string) {
-    const cookieStore = cookies()
+    try {
+        const cookieStore = await cookies()
 
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                get(name: string) {
-                    return cookieStore.get(name)?.value
+        const supabase = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    get(name: string) {
+                        return cookieStore.get(name)?.value
+                    },
+                    set(name: string, value: string, options) {
+                        console.log('[Auth Action] Setting cookie:', { name, hasValue: !!value })
+                        cookieStore.set({ name, value, ...options })
+                    },
+                    remove(name: string, options) {
+                        cookieStore.set({ name, value: '', ...options })
+                    },
                 },
-                set(name: string, value: string, options) {
-                    console.log('[Auth Action] Setting cookie:', { name, hasValue: !!value })
-                    cookieStore.set({ name, value, ...options })
-                },
-                remove(name: string, options) {
-                    cookieStore.set({ name, value: '', ...options })
-                },
-            },
-        }
-    )
+            }
+        )
 
     const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -36,31 +37,35 @@ export async function signInAction(email: string, password: string) {
         return { success: false, error: error.message }
     }
 
-    console.log('[Auth Action] Login successful:', {
-        userId: data.user?.id,
-        email: data.user?.email,
-        hasSession: !!data.session
-    })
+        console.log('[Auth Action] Login successful:', {
+            userId: data.user?.id,
+            email: data.user?.email,
+            hasSession: !!data.session
+        })
 
-    // Check if profile exists
-    if (data.user) {
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('is_active')
-            .eq('id', data.user.id)
-            .single()
+        // Check if profile exists
+        if (data.user) {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('is_active')
+                .eq('id', data.user.id)
+                .single()
 
-        if (profile && profile.is_active === false) {
-            await supabase.auth.signOut()
-            return { success: false, error: 'تم إيقاف حسابك من قبل مدير النظام' }
+            if (profile && profile.is_active === false) {
+                await supabase.auth.signOut()
+                return { success: false, error: 'تم إيقاف حسابك من قبل مدير النظام' }
+            }
         }
-    }
 
-    return { success: true, user: data.user }
+        return { success: true, user: data.user }
+    } catch (error) {
+        console.error('[Auth Action] Exception:', error)
+        return { success: false, error: 'Server error occurred' }
+    }
 }
 
 export async function signOutAction() {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -85,7 +90,7 @@ export async function signOutAction() {
 }
 
 export async function getSessionAction() {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,

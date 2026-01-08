@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signInAction } from '@/lib/auth-actions'
+import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,21 +29,43 @@ function LoginForm() {
         setError(null)
 
         try {
-            // Use server action for login to ensure proper cookie handling
-            const result = await signInAction(email, password)
+            const supabase = createSupabaseBrowser()
 
-            if (!result.success) {
-                setError(result.error === 'Invalid login credentials'
+            // Sign in with Supabase
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            })
+
+            if (error) {
+                console.error('[Login] Auth error:', error)
+                setError(error.message === 'Invalid login credentials'
                     ? 'بيانات الدخول غير صحيحة'
-                    : result.error || 'حدث خطأ في تسجيل الدخول')
+                    : error.message || 'حدث خطأ في تسجيل الدخول')
                 setLoading(false)
                 return
             }
 
+            // Check if account is suspended
+            if (data.user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('is_active')
+                    .eq('id', data.user.id)
+                    .single()
+
+                if (profile && profile.is_active === false) {
+                    await supabase.auth.signOut()
+                    setError('تم إيقاف حسابك من قبل مدير النظام')
+                    setLoading(false)
+                    return
+                }
+            }
+
             console.log('[Login] Success, redirecting to dashboard...')
 
-            // Force a full page reload to ensure cookies are properly set
-            window.location.href = '/dashboard'
+            // Use router.push for client-side navigation
+            router.push('/dashboard')
         } catch (err) {
             console.error('[Login] Exception:', err)
             setError('حدث خطأ غير متوقع')
