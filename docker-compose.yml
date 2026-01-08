@@ -1,0 +1,23 @@
+services:
+  app:
+    container_name: harmuni-task
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    networks:
+      - harmuni-network
+
+networks:
+  harmuni-network:
+    driver: bridge

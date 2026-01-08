@@ -16,14 +16,13 @@ function getSupabaseAdmin() {
     })
 }
 
-// OneSignal Configuration
-const ONESIGNAL_APP_ID = '6d710068-0d52-4ca5-8aa2-79d89d525c27'
-const ONESIGNAL_REST_API_KEY = 'os_v2_app_nvyqa2ankjgklcvcphmj2us4e767ntwyf4lu5o5u4ujixrlk6bsp5egys46zvwjqzxyhqan3k2psu2fcktoirnvpg7ezrwlncbzltbq'
+// OneSignal Configuration - loaded from environment variables
+const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID || ''
+const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY || ''
 
 // OneSignal function - using external_id (same as your existing system)
 async function sendPushNotification(userIds: string[], title: string, body: string, notificationUrl: string) {
-    if (userIds.length === 0) {
-        console.log('[Reminder] No users to notify')
+    if (userIds.length === 0 || !ONESIGNAL_REST_API_KEY) {
         return
     }
 
@@ -36,7 +35,6 @@ async function sendPushNotification(userIds: string[], title: string, body: stri
             },
             body: JSON.stringify({
                 app_id: ONESIGNAL_APP_ID,
-                // Use include_aliases with external_id (matches your existing setup)
                 include_aliases: {
                     external_id: userIds
                 },
@@ -47,8 +45,7 @@ async function sendPushNotification(userIds: string[], title: string, body: stri
             })
         })
 
-        const result = await response.json()
-        console.log('[Reminder] Push sent:', result.id || result)
+        await response.json()
     } catch (error) {
         console.error('[Reminder] Push error:', error)
     }
@@ -56,16 +53,16 @@ async function sendPushNotification(userIds: string[], title: string, body: stri
 
 // Main handler
 export async function GET(request: Request) {
-    // Verify cron secret (optional security)
+    // Verify cron secret - ALWAYS required in production
     const authHeader = request.headers.get('authorization')
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        // Allow without auth in development
-        if (process.env.NODE_ENV === 'production') {
+    const cronSecret = process.env.CRON_SECRET
+
+    // In production, always require authentication
+    if (process.env.NODE_ENV === 'production') {
+        if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
     }
-
-    console.log('[Reminder Cron] Starting at', new Date().toISOString())
 
     const supabaseAdmin = getSupabaseAdmin()
     const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
@@ -145,8 +142,8 @@ export async function GET(request: Request) {
                     ? tasks[0].title
                     : `${tasks[0].title} و ${taskCount - 1} مهام أخرى`
                 const url = taskCount === 1
-                    ? `https://opsroom.vercel.app/dashboard/tasks/${tasks[0].taskId}`
-                    : 'https://opsroom.vercel.app/dashboard?tab=tasks'
+                    ? `https://harmuni.org/dashboard/tasks/${tasks[0].taskId}`
+                    : 'https://harmuni.org/dashboard?tab=tasks'
 
                 // Send Push Notification
                 await sendPushNotification([userId], title, body, url)
@@ -161,7 +158,7 @@ export async function GET(request: Request) {
                         type: 'task',
                         items: tasks.map(t => ({
                             title: t.title,
-                            url: `https://opsroom.vercel.app/dashboard/tasks/${t.taskId}`
+                            url: `https://harmuni.org/dashboard/tasks/${t.taskId}`
                         }))
                     })
                 }
@@ -245,8 +242,8 @@ export async function GET(request: Request) {
                     ? circulars[0].title
                     : `${circulars[0].title} و ${count - 1} تعاميم أخرى`
                 const url = count === 1
-                    ? `https://opsroom.vercel.app/dashboard/circulars/${circulars[0].circularId}`
-                    : 'https://opsroom.vercel.app/dashboard?tab=circulars'
+                    ? `https://harmuni.org/dashboard/circulars/${circulars[0].circularId}`
+                    : 'https://harmuni.org/dashboard?tab=circulars'
 
                 // Send Push Notification
                 await sendPushNotification([userId], title, body, url)
@@ -261,7 +258,7 @@ export async function GET(request: Request) {
                         type: 'circular',
                         items: circulars.map(c => ({
                             title: c.title,
-                            url: `https://opsroom.vercel.app/dashboard/circulars/${c.circularId}`
+                            url: `https://harmuni.org/dashboard/circulars/${c.circularId}`
                         }))
                     })
                 }

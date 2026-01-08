@@ -5,9 +5,10 @@ import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 import { sendPushNotificationAction } from './onesignal-server'
 
+// Service key must be set in environment variables
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndlZmpzeHVnb3poaHp1YmR0cGViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njg4MzI0MCwiZXhwIjoyMDgyNDU5MjQwfQ.FpHEEURuxB0CY5bsT329F-bUUf6lYYCptUlWYsuwR4Q',
+    process.env.SUPABASE_SERVICE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
@@ -129,7 +130,7 @@ export async function createCircularAction(input: CreateCircularInput): Promise<
                 userIds: recipientIds,
                 title: 'تعميم جديد 📢',
                 body: title,
-                url: `https://opsroom.vercel.app/dashboard/circulars/${circular.id}`
+                url: `https://harmuni.org/dashboard/circulars/${circular.id}`
             }).then(result => {
                 if (result.success) {
                     console.log('[Push] Circular notification sent successfully')
@@ -358,7 +359,7 @@ export async function sendCircularReminderAction(
 
         // Send reminder email
         await resend.emails.send({
-            from: 'Ops Room <noreply@harmuni.org>',
+            from: 'Harmuni Task <noreply@harmuni.org>',
             to: user.email,
             subject: `تذكير: يرجى قراءة التعميم - ${circular.title}`,
             html: `
@@ -375,7 +376,7 @@ export async function sendCircularReminderAction(
                         قراءة التعميم
                     </a>
                     <p style="color: #6b7280; margin-top: 20px; font-size: 14px;">
-                        Ops Room - نظام إدارة المهام
+                        Harmuni Task - نظام إدارة المهام
                     </p>
                 </div>
             `

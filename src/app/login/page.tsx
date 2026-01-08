@@ -184,7 +184,7 @@ function LoginForm() {
                     {/* Footer */}
                     <div className="mt-8 text-center">
                         <p className="text-slate-500 text-sm">
-                            Ops Room © {new Date().getFullYear()}
+                            Harmuni Task © {new Date().getFullYear()}
                         </p>
                     </div>
                 </CardContent>

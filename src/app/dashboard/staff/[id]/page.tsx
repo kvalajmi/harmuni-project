@@ -6,58 +6,60 @@ import Link from 'next/link'
 import { use } from 'react'
 import { mutate } from 'swr'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { markAssignmentCompletedAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
-import { useEmployeeProfile, mutationKeys } from '@/lib/hooks'
+import { updateTaskStatusAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
+import { useEmployeeProfileBasic, useEmployeeTasks, useEmployeeCirculars, mutationKeys } from '@/lib/hooks'
 
 type TabType = 'active' | 'completed' | 'circulars'
 
 export default function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
+    const { user, profile: currentUserProfile, loading: authLoading } = useAuth()
     const [activeTab, setActiveTab] = useState<TabType>('active')
-    const [isAdmin, setIsAdmin] = useState(false)
-    const [authChecked, setAuthChecked] = useState(false)
     const router = useRouter()
 
-    // SWR Hook للتخزين المؤقت 🚀
-    const { data, isLoading, mutate: mutateProfile } = useEmployeeProfile(authChecked ? id : null)
+    const isAdmin = currentUserProfile?.role === 'admin'
 
-    const loading = !authChecked || isLoading
+    // SWR Hooks - Optimized with lazy loading 🚀
+    const { data: basicData, isLoading: basicLoading, mutate: mutateBasic } = useEmployeeProfileBasic(!authLoading && isAdmin ? id : null)
+    const { data: tasksData, isLoading: tasksLoading, mutate: mutateTasks } = useEmployeeTasks(!authLoading && isAdmin && activeTab !== 'circulars' ? id : null)
+    const { data: circularsData, isLoading: circularsLoading, mutate: mutateCirculars } = useEmployeeCirculars(!authLoading && isAdmin && activeTab === 'circulars' ? id : null)
 
+    const loading = authLoading || basicLoading
+    const employeeProfile = basicData?.profile
+    const stats = basicData?.stats
+    const activeTasks = tasksData?.activeTasks || []
+    const completedTasks = tasksData?.completedTasks || []
+    const circulars = circularsData || []
+
+    // Auth and permission check
     useEffect(() => {
-        checkAdmin()
-    }, [id])
-
-    const checkAdmin = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            router.push('/login')
-            return
+        if (!authLoading) {
+            if (!user) {
+                router.push('/login')
+                return
+            }
+            if (!isAdmin) {
+                router.push('/dashboard')
+                return
+            }
         }
-
-        const { data: profileResult } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-
-        if (profileResult?.role !== 'admin') {
-            router.push('/dashboard')
-            return
-        }
-
-        setIsAdmin(true)
-        setAuthChecked(true)
-    }
+    }, [authLoading, user, isAdmin, router])
 
     const loadData = useCallback(() => {
-        mutateProfile()
-    }, [mutateProfile])
+        mutateBasic()
+        if (activeTab !== 'circulars') {
+            mutateTasks()
+        } else {
+            mutateCirculars()
+        }
+    }, [mutateBasic, mutateTasks, mutateCirculars, activeTab])
 
-    const handleMarkCompleted = async (assignmentId: string) => {
-        const result = await markAssignmentCompletedAction(assignmentId)
+    const handleMarkCompleted = async (taskId: string) => {
+        const result = await updateTaskStatusAction(taskId, 'completed')
         if (result.success) {
             loadData()
         }
@@ -99,7 +101,7 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
         )
     }
 
-    if (!data) {
+    if (!employeeProfile) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
                 <p className="text-slate-500 dark:text-slate-400">لم يتم العثور على الموظف</p>
@@ -113,11 +115,11 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/50">
                 <div className="flex items-center justify-between px-4 py-4">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => router.push('/dashboard?tab=employees')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                        <Link href="/dashboard?tab=employees" prefetch className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
-                        </button>
+                        </Link>
                         <h1 className="text-lg font-bold text-slate-900 dark:text-white">ملف الموظف</h1>
                     </div>
                     <Link href={`/dashboard/staff/${id}/print`}>
@@ -137,18 +139,18 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
                     <div className="flex items-start gap-4">
                         <Avatar className="h-16 w-16 bg-gradient-to-br from-blue-500 to-purple-600">
                             <AvatarFallback className="bg-transparent text-white text-xl font-bold">
-                                {data.profile.full_name?.charAt(0) || data.profile.email.charAt(0).toUpperCase()}
+                                {employeeProfile.full_name?.charAt(0) || employeeProfile.email.charAt(0).toUpperCase()}
                             </AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{data.profile.full_name || 'بدون اسم'}</h2>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">{data.profile.email}</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{employeeProfile.full_name || 'بدون اسم'}</h2>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">{employeeProfile.email}</p>
                             <div className="flex flex-wrap gap-2 mt-2">
-                                <Badge variant={data.profile.role === 'admin' ? 'default' : 'secondary'}
-                                    className={data.profile.role === 'admin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' : 'bg-slate-100 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300'}>
-                                    {data.profile.role === 'admin' ? 'مدير' : 'موظف'}
+                                <Badge variant={employeeProfile.role === 'admin' ? 'default' : 'secondary'}
+                                    className={employeeProfile.role === 'admin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' : 'bg-slate-100 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300'}>
+                                    {employeeProfile.role === 'admin' ? 'مدير' : 'موظف'}
                                 </Badge>
-                                {data.profile.groups.map(g => (
+                                {employeeProfile.groups.map(g => (
                                     <Badge key={g.id} variant="outline" className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300">
                                         {g.name}
                                     </Badge>
@@ -158,43 +160,43 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
                     </div>
                 </div>
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 text-center shadow-sm">
-                        <div className="w-10 h-10 mx-auto mb-2 bg-amber-500/20 rounded-xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {/* Stats Cards - Responsive */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-2 sm:p-4 text-center shadow-sm">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1 sm:mb-2 bg-amber-500/20 rounded-xl flex items-center justify-center">
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.stats.activeCount}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">نشطة</p>
+                        <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{stats?.activeTasks || 0}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">نشطة</p>
                     </div>
-                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 text-center shadow-sm">
-                        <div className="w-10 h-10 mx-auto mb-2 bg-green-500/20 rounded-xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-2 sm:p-4 text-center shadow-sm">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1 sm:mb-2 bg-green-500/20 rounded-xl flex items-center justify-center">
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.stats.completedCount}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">مكتملة</p>
+                        <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{stats?.completedTasks || 0}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">مكتملة</p>
                     </div>
-                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-4 text-center shadow-sm">
-                        <div className="w-10 h-10 mx-auto mb-2 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-2 sm:p-4 text-center shadow-sm">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1 sm:mb-2 bg-blue-500/20 rounded-xl flex items-center justify-center">
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
                             </svg>
                         </div>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{data.stats.circularCount}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">تعاميم</p>
+                        <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">{stats?.unreadCirculars || 0}</p>
+                        <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">تعاميم</p>
                     </div>
                 </div>
 
                 {/* Tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-2">
                     {[
-                        { id: 'active' as TabType, label: 'المهام النشطة', count: data.stats.activeCount },
-                        { id: 'completed' as TabType, label: 'المهام المنجزة', count: data.stats.completedCount },
-                        { id: 'circulars' as TabType, label: 'التعاميم', count: data.stats.circularCount }
+                        { id: 'active' as TabType, label: 'المهام النشطة', count: stats?.activeTasks || 0 },
+                        { id: 'completed' as TabType, label: 'المهام المنجزة', count: stats?.completedTasks || 0 },
+                        { id: 'circulars' as TabType, label: 'التعاميم', count: stats?.unreadCirculars || 0 }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -212,36 +214,48 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
                 {/* Content */}
                 <div className="space-y-3">
                     {activeTab === 'active' && (
-                        data.activeTasks.length === 0 ? (
+                        tasksLoading ? (
+                            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
+                                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : activeTasks.length === 0 ? (
                             <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
                                 <p className="text-slate-500 dark:text-slate-400">لا توجد مهام نشطة</p>
                             </div>
                         ) : (
-                            data.activeTasks.map(task => (
+                            activeTasks.map(task => (
                                 <TaskCard key={task.id} task={task} onMarkCompleted={handleMarkCompleted} formatDateTime={formatDateTime} getStatusBadge={getStatusBadge} />
                             ))
                         )
                     )}
 
                     {activeTab === 'completed' && (
-                        data.completedTasks.length === 0 ? (
+                        tasksLoading ? (
+                            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
+                                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : completedTasks.length === 0 ? (
                             <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
                                 <p className="text-slate-500 dark:text-slate-400">لا توجد مهام مكتملة</p>
                             </div>
                         ) : (
-                            data.completedTasks.map(task => (
+                            completedTasks.map(task => (
                                 <TaskCard key={task.id} task={task} formatDateTime={formatDateTime} getStatusBadge={getStatusBadge} showCompleted />
                             ))
                         )
                     )}
 
                     {activeTab === 'circulars' && (
-                        data.circulars.length === 0 ? (
+                        circularsLoading ? (
+                            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
+                                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                            </div>
+                        ) : circulars.length === 0 ? (
                             <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center shadow-sm">
                                 <p className="text-slate-500 dark:text-slate-400">لا توجد تعاميم</p>
                             </div>
                         ) : (
-                            data.circulars.map(circular => (
+                            circulars.map(circular => (
                                 <CircularCard key={circular.id} circular={circular} formatDateTime={formatDateTime} />
                             ))
                         )
@@ -255,7 +269,7 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
 // Task Card Component
 function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showCompleted = false }: {
     task: EmployeeTask
-    onMarkCompleted?: (id: string) => void
+    onMarkCompleted?: (taskId: string) => void
     formatDateTime: (date: string) => string
     getStatusBadge: (status: string) => React.ReactNode
     showCompleted?: boolean
@@ -271,7 +285,22 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">{task.task_description}</p>
                     )}
                 </div>
-                {getStatusBadge(task.status)}
+                <div className="flex flex-col items-end gap-2">
+                    {getStatusBadge(task.status)}
+                    {/* Move Accept & Complete button here - under the status badge */}
+                    {!showCompleted && onMarkCompleted && task.status !== 'completed' && (
+                        <Button
+                            size="sm"
+                            onClick={() => onMarkCompleted(task.task_id)}
+                            className="bg-green-500 hover:bg-green-600 text-white"
+                        >
+                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            قبول وإكمال
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Timeline */}
@@ -356,36 +385,24 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                     </Button>
                 </Link>
 
-                {/* أزرار إضافية للمهام النشطة فقط */}
+                {/* Reminder button only for active tasks */}
                 {!showCompleted && onMarkCompleted && (
-                    <>
-                        <Button
-                            size="sm"
-                            onClick={() => onMarkCompleted(task.id)}
-                            className="bg-green-500 hover:bg-green-600 text-white"
-                        >
-                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            قبول وإكمال
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                                const result = await sendTaskReminderAction(task.id, task.user_id, task.task_title)
-                                if (result.success) {
-                                    window.location.reload()
-                                }
-                            }}
-                            className="border-orange-500 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10"
-                        >
-                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                            </svg>
-                            تذكير
-                        </Button>
-                    </>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                            const result = await sendTaskReminderAction(task.id, task.user_id, task.task_title)
+                            if (result.success) {
+                                window.location.reload()
+                            }
+                        }}
+                        className="border-orange-500 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10"
+                    >
+                        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        تذكير
+                    </Button>
                 )}
             </div>
         </div>

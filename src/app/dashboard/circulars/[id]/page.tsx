@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -127,7 +128,9 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
                 <div className="text-center">
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">التعميم غير موجود</h2>
-                    <Button onClick={() => router.push('/dashboard?tab=circulars')}>العودة للوحة التحكم</Button>
+                    <Link href="/dashboard?tab=circulars" prefetch>
+                        <Button>العودة للوحة التحكم</Button>
+                    </Link>
                 </div>
             </div>
         )
@@ -141,11 +144,11 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
             {/* Header */}
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/50">
                 <div className="flex items-center gap-3 px-4 py-4">
-                    <button onClick={() => router.push('/dashboard?tab=circulars')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <Link href="/dashboard?tab=circulars" prefetch className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
-                    </button>
+                    </Link>
                     <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
                         <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
@@ -186,7 +189,7 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span>{new Date(circular.created_at).toLocaleDateString('ar-SA')}</span>
+                            <span>{new Date(circular.created_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</span>
                         </div>
                     </div>
                 </div>
@@ -332,7 +335,7 @@ export default function CircularDetailsPage({ params }: { params: Promise<{ id: 
                                                 <Badge className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">تم القراءة</Badge>
                                                 {recipient.read_at && (
                                                     <p className="text-xs text-slate-500 mt-1">
-                                                        {new Date(recipient.read_at).toLocaleDateString('ar-SA')}
+                                                        {new Date(recipient.read_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
                                                     </p>
                                                 )}
                                             </div>

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense, lazy } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import useSWR, { mutate } from 'swr'
 import { supabase } from '@/lib/supabase'
-import { User } from '@supabase/supabase-js'
+import { useAuth } from '@/lib/auth-context'
 import { Profile, Task, TaskAssignment, Notification } from '@/lib/supabase'
 import { CreateTaskDrawer } from '@/components/create-task-drawer'
 import { CreateCircularDrawer } from '@/components/create-circular-drawer'
@@ -31,6 +32,32 @@ import {
     NotificationsListSkeleton
 } from '@/components/skeletons'
 
+// Dynamic imports for tab components with loading states
+const HomeTab = dynamic(() => import('@/components/dashboard/HomeTab'), {
+    loading: () => <HomeTabSkeleton />,
+    ssr: false
+})
+
+const TasksTab = dynamic(() => import('@/components/dashboard/TasksTab'), {
+    loading: () => <TasksListSkeleton />,
+    ssr: false
+})
+
+const CircularsTab = dynamic(() => import('@/components/dashboard/CircularsTab'), {
+    loading: () => <CircularsListSkeleton />,
+    ssr: false
+})
+
+const NotificationsTab = dynamic(() => import('@/components/dashboard/NotificationsTab'), {
+    loading: () => <NotificationsListSkeleton />,
+    ssr: false
+})
+
+const ProfileTab = dynamic(() => import('@/components/dashboard/ProfileTab'), {
+    loading: () => <div className="animate-pulse bg-slate-200 dark:bg-slate-700 h-64 rounded-2xl" />,
+    ssr: false
+})
+
 // Tab types
 type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'profile'
 
@@ -51,9 +78,7 @@ interface AdminTask {
 }
 
 export default function DashboardPage() {
-    const [user, setUser] = useState<User | null>(null)
-    const [profile, setProfile] = useState<Profile | null>(null)
-    const [authLoading, setAuthLoading] = useState(true)
+    const { user, profile, loading: authLoading } = useAuth()
     const [activeTab, setActiveTab] = useState<TabType>('home')
     const [showCreateTask, setShowCreateTask] = useState(false)
     const [showCreateCircular, setShowCreateCircular] = useState(false)
@@ -82,13 +107,32 @@ export default function DashboardPage() {
     const userId = user?.id || null
 
     // SWR Hooks - تحميل البيانات مع التخزين المؤقت 🚀
-    const { data: employeesData } = useEmployeesWithStats()
-    const { data: assignedTasksData } = useAssignedTasks(userId)
-    const { data: createdTasksData } = useCreatedTasks(isAdmin ? userId : null)
-    const { data: adminTasksWithAssignmentsData, isLoading: isLoadingAdminTasks, mutate: mutateAdminTasks } = useAdminTasksWithAssignments(isAdmin ? userId : null)
-    const { data: notificationsData, mutate: mutateNotifications } = useNotifications(userId)
-    const { data: adminCircularsData } = useAdminCirculars(isAdmin ? userId : null)
-    const { data: staffCircularsData } = useStaffCirculars(!isAdmin ? userId : null)
+    const { data: employeesData, error: employeesError } = useEmployeesWithStats()
+    const { data: assignedTasksData, error: assignedTasksError } = useAssignedTasks(userId)
+    const { data: createdTasksData, error: createdTasksError } = useCreatedTasks(isAdmin ? userId : null)
+    const { data: adminTasksWithAssignmentsData, isLoading: isLoadingAdminTasks, mutate: mutateAdminTasks, error: adminTasksError } = useAdminTasksWithAssignments(isAdmin ? userId : null)
+    const { data: notificationsData, mutate: mutateNotifications, error: notificationsError } = useNotifications(userId)
+    const { data: adminCircularsData, error: adminCircularsError } = useAdminCirculars(isAdmin ? userId : null)
+    const { data: staffCircularsData, error: staffCircularsError } = useStaffCirculars(!isAdmin ? userId : null)
+
+    // Debug logging for production issue
+    useEffect(() => {
+        console.log('[DEBUG] Dashboard Data Status:', {
+            user: user ? { id: user.id.substring(0, 8) + '...', email: user.email } : null,
+            profile: profile ? { role: profile.role, isActive: profile.is_active } : null,
+            isAdmin,
+            userId: userId?.substring(0, 8) + '...',
+            employees: { count: employeesData?.length || 0, hasData: !!employeesData, error: employeesError?.message },
+            assignedTasks: { count: assignedTasksData?.length || 0, hasData: !!assignedTasksData, error: assignedTasksError?.message },
+            createdTasks: { count: createdTasksData?.length || 0, hasData: !!createdTasksData, error: createdTasksError?.message },
+            adminTasks: { count: adminTasksWithAssignmentsData?.length || 0, hasData: !!adminTasksWithAssignmentsData, error: adminTasksError?.message },
+            notifications: { count: notificationsData?.length || 0, hasData: !!notificationsData, error: notificationsError?.message },
+            circulars: {
+                admin: { count: adminCircularsData?.length || 0, error: adminCircularsError?.message },
+                staff: { count: staffCircularsData?.length || 0, error: staffCircularsError?.message }
+            }
+        })
+    }, [employeesData, assignedTasksData, createdTasksData, adminTasksWithAssignmentsData, notificationsData, adminCircularsData, staffCircularsData, user, profile, isAdmin, userId])
 
     // Derived data
     const employees = employeesData || []
@@ -112,35 +156,17 @@ export default function DashboardPage() {
             total: tasks.length
         }
 
-    // Auth check - runs once
+    // Auth redirect - redirect to login if not authenticated
     useEffect(() => {
-        checkAuth()
-    }, [])
-
-    const checkAuth = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
+        if (!authLoading && !user) {
             router.push('/login')
-            return
         }
-        setUser(user)
-
-        const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single()
-
-        // التحقق من حالة الحساب - طرد الموقوفين
-        if (profileData && profileData.is_active === false) {
-            await supabase.auth.signOut()
+        // Check if account is suspended
+        if (!authLoading && profile && profile.is_active === false) {
+            supabase.auth.signOut()
             router.push('/login?suspended=true')
-            return
         }
-
-        setProfile(profileData)
-        setAuthLoading(false)
-    }
+    }, [authLoading, user, profile, router])
 
     // Refresh data - للتحديث اليدوي
     const loadData = useCallback(() => {
@@ -196,7 +222,7 @@ export default function DashboardPage() {
                             </svg>
                         </div>
                         <div>
-                            <h1 className="text-lg font-bold text-slate-800 dark:text-white">Ops Room</h1>
+                            <h1 className="text-lg font-bold text-slate-800 dark:text-white">Harmuni Task</h1>
                             {loading ? (
                                 <div className="h-3 w-16 bg-slate-200 dark:bg-slate-700/50 animate-pulse rounded" />
                             ) : (
@@ -307,7 +333,7 @@ export default function DashboardPage() {
                                                                     {notification.message}
                                                                 </p>
                                                                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                                                                    {new Date(notification.created_at).toLocaleDateString('ar-SA')}
+                                                                    {new Date(notification.created_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -432,7 +458,6 @@ export default function DashboardPage() {
     )
 }
 
-// Navigation Item Component
 function NavItem({ icon, label, active, onClick, badge }: {
     icon: React.ReactNode
     label: string
@@ -458,1106 +483,6 @@ function NavItem({ icon, label, active, onClick, badge }: {
             </div>
             <span className="text-xs font-medium">{label}</span>
         </button>
-    )
-}
-
-// Home Tab Component
-function HomeTab({ stats, profile, employees }: {
-    stats: { pending: number; completed: number; total: number }
-    profile: Profile | null
-    employees: EmployeeWithStats[]
-}) {
-    const [filter, setFilter] = useState<EmployeeFilter>('all')
-
-    // Filter employees (exclude admins)
-    const staffEmployees = employees.filter(emp => emp.role !== 'admin')
-    const totalActive = staffEmployees.reduce((sum, e) => sum + e.stats.activeTasks, 0)
-    const totalCompleted = staffEmployees.reduce((sum, e) => sum + e.stats.completedTasks, 0)
-
-    const filteredEmployees = staffEmployees.filter(emp => {
-        switch (filter) {
-            case 'has_active':
-                return emp.stats.activeTasks > 0
-            case 'no_tasks':
-                return emp.stats.totalTasks === 0
-            default:
-                return true
-        }
-    })
-
-    return (
-        <div className="space-y-6">
-            {/* Welcome Card */}
-            <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-xl rounded-2xl border border-blue-500/30 dark:border-blue-500/20 p-6">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">
-                    مرحباً {profile?.full_name || 'بك'} 👋
-                </h2>
-                <p className="text-slate-600 dark:text-slate-300 text-sm">
-                    {new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-4">
-                <StatCard
-                    icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                    iconBg="bg-amber-500/20"
-                    iconColor="text-amber-600 dark:text-amber-400"
-                    value={stats.pending}
-                    label="مهام قيد التنفيذ"
-                />
-                <StatCard
-                    icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                    iconBg="bg-green-500/20"
-                    iconColor="text-green-600 dark:text-green-400"
-                    value={stats.completed}
-                    label="مهام مكتملة"
-                />
-            </div>
-
-            {/* Employee Monitoring Section - Only for Admin */}
-            {profile?.role === 'admin' && (
-                <div className="space-y-4">
-                    {/* Header with Management Button */}
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white">متابعة الموظفين</h3>
-                        <Link
-                            href="/dashboard/staff"
-                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-colors"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            إدارة
-                        </Link>
-                    </div>
-
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-3 text-center">
-                            <p className="text-2xl font-bold text-slate-900 dark:text-white">{staffEmployees.length}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">موظف</p>
-                        </div>
-                        <div className="bg-amber-50 dark:bg-amber-500/10 backdrop-blur-xl rounded-xl border border-amber-200 dark:border-amber-500/20 p-3 text-center">
-                            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{totalActive}</p>
-                            <p className="text-xs text-amber-600 dark:text-amber-400">مهام نشطة</p>
-                        </div>
-                        <div className="bg-green-50 dark:bg-green-500/10 backdrop-blur-xl rounded-xl border border-green-200 dark:border-green-500/20 p-3 text-center">
-                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalCompleted}</p>
-                            <p className="text-xs text-green-600 dark:text-green-400">مكتملة</p>
-                        </div>
-                    </div>
-
-                    {/* Filter Buttons */}
-                    <div className="flex gap-2 overflow-x-auto pb-2">
-                        <button
-                            onClick={() => setFilter('all')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                                }`}
-                        >
-                            الكل ({staffEmployees.length})
-                        </button>
-                        <button
-                            onClick={() => setFilter('has_active')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                                }`}
-                        >
-                            لديهم نشط ({staffEmployees.filter(e => e.stats.activeTasks > 0).length})
-                        </button>
-                        <button
-                            onClick={() => setFilter('no_tasks')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'no_tasks'
-                                ? 'bg-slate-500 text-white'
-                                : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                                }`}
-                        >
-                            بدون مهام ({staffEmployees.filter(e => e.stats.totalTasks === 0).length})
-                        </button>
-                    </div>
-
-                    {/* Employees List */}
-                    {filteredEmployees.length > 0 ? (
-                        <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-                            {/* Table Header */}
-                            <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                <div className="col-span-5">الموظف</div>
-                                <div className="col-span-2 text-center">الكل</div>
-                                <div className="col-span-2 text-center">نشط</div>
-                                <div className="col-span-2 text-center">مكتمل</div>
-                                <div className="col-span-1"></div>
-                            </div>
-                            {/* Rows */}
-                            <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                {filteredEmployees.map(emp => (
-                                    <Link
-                                        key={emp.id}
-                                        href={`/dashboard/staff/${emp.id}`}
-                                        className="grid grid-cols-12 gap-2 p-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors items-center"
-                                    >
-                                        <div className="col-span-5 flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                                {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
-                                            </div>
-                                            <span className="text-sm text-slate-900 dark:text-white truncate">{emp.full_name || emp.email}</span>
-                                        </div>
-                                        <div className="col-span-2 text-center">
-                                            <span className="inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                                                {emp.stats.totalTasks}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-2 text-center">
-                                            <span className={`inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium ${emp.stats.activeTasks > 0 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
-                                                {emp.stats.activeTasks}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-2 text-center">
-                                            <span className="inline-block min-w-[24px] px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
-                                                {emp.stats.completedTasks}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-1 text-left">
-                                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                            </svg>
-                                        </div>
-                                    </Link>
-                                ))}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center">
-                            <p className="text-slate-500 dark:text-slate-400">
-                                {filter === 'all' ? 'لا يوجد موظفين' : 'لا يوجد موظفين مطابقين للفلتر'}
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Stat Card Component
-function StatCard({ icon, iconBg, iconColor, value, label }: {
-    icon: React.ReactNode
-    iconBg: string
-    iconColor: string
-    value: number
-    label: string
-}) {
-    return (
-        <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm">
-            <div className={`w-10 h-10 ${iconBg} rounded-xl flex items-center justify-center mb-3`}>
-                <span className={iconColor}>{icon}</span>
-            </div>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
-            <p className="text-slate-600 dark:text-slate-400 text-sm">{label}</p>
-        </div>
-    )
-}
-
-// Task Item Component
-function TaskItem({ assignment }: { assignment: AssignedTask }) {
-    const statusColors: Record<string, string> = {
-        pending: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
-        in_progress: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
-        completed: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
-        rejected: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'
-    }
-
-    const statusLabels: Record<string, string> = {
-        pending: 'قيد الانتظار',
-        in_progress: 'قيد التنفيذ',
-        completed: 'مكتمل',
-        rejected: 'مرفوض'
-    }
-
-    return (
-        <Link href={`/dashboard/tasks/${assignment.task?.id}`} className="block p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer">
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-slate-900 dark:text-white truncate">{assignment.task?.title}</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1">{assignment.task?.description || 'بدون وصف'}</p>
-                </div>
-                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${statusColors[assignment.status] || statusColors.pending}`}>
-                    {statusLabels[assignment.status] || statusLabels.pending}
-                </span>
-            </div>
-        </Link>
-    )
-}
-
-// Tasks Tab Component - Different views for Admin vs Staff
-function TasksTab({ tasks, adminTasks, isAdmin, isLoadingAdminTasks, onRefresh, mutateAdminTasks }: {
-    tasks: AssignedTask[]
-    adminTasks: AdminTaskWithAssignments[]
-    isAdmin: boolean
-    isLoadingAdminTasks: boolean
-    onRefresh: () => void
-    mutateAdminTasks: () => void
-}) {
-    const [markingId, setMarkingId] = useState<string | null>(null)
-
-    const getTimeAgo = (dateString: string) => {
-        const date = new Date(dateString)
-        const now = new Date()
-        const diffMs = now.getTime() - date.getTime()
-        const diffMins = Math.floor(diffMs / 60000)
-        const diffHours = Math.floor(diffMins / 60)
-        const diffDays = Math.floor(diffHours / 24)
-
-        if (diffDays > 0) return `منذ ${diffDays} يوم`
-        if (diffHours > 0) return `منذ ${diffHours} ساعة`
-        if (diffMins > 0) return `منذ ${diffMins} دقيقة`
-        return 'الآن'
-    }
-
-    const handleMarkComplete = async (assignmentId: string) => {
-        setMarkingId(assignmentId)
-        await adminMarkAssignmentCompleteAction(assignmentId)
-        mutateAdminTasks()
-        setMarkingId(null)
-    }
-
-    // Flatten all assignments with task info for table view
-    const allAssignments = adminTasks.flatMap(task =>
-        task.assignments.map(a => ({
-            ...a,
-            taskId: task.id,
-            taskTitle: task.title,
-            taskDescription: task.description,
-            taskCreatedAt: task.created_at
-        }))
-    )
-
-    // Sort: incomplete first, then completed at bottom
-    const sortedAssignments = [...allAssignments].sort((a, b) => {
-        const aComplete = a.status === 'completed'
-        const bComplete = b.status === 'completed'
-        if (aComplete && !bComplete) return 1
-        if (!aComplete && bComplete) return -1
-        return 0
-    })
-
-    const statusColors: Record<string, string> = {
-        pending: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400',
-        in_progress: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400',
-        completed: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400',
-        rejected: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'
-    }
-
-    const statusLabels: Record<string, string> = {
-        pending: 'قيد الانتظار',
-        in_progress: 'قيد التنفيذ',
-        completed: 'منجزة ✓',
-        rejected: 'مرفوضة'
-    }
-
-    // ADMIN VIEW - Show tasks created by admin with assignments table
-    if (isAdmin) {
-        // Show skeleton while loading
-        if (isLoadingAdminTasks) {
-            return <AdminTasksListSkeleton />
-        }
-
-        return (
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">المهام المرسلة</h2>
-                    <button
-                        onClick={onRefresh}
-                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                    </button>
-                </div>
-
-                {sortedAssignments.length > 0 ? (
-                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
-                        {/* Table Header */}
-                        <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            <div className="col-span-4">المهمة</div>
-                            <div className="col-span-3">الموظف</div>
-                            <div className="col-span-2 text-center">الحالة</div>
-                            <div className="col-span-3 text-center">إجراء</div>
-                        </div>
-                        {/* Rows */}
-                        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                            {sortedAssignments.map((assignment) => (
-                                <div
-                                    key={assignment.id}
-                                    className={`grid grid-cols-12 gap-2 p-3 items-center transition-colors ${assignment.status === 'completed' ? 'opacity-60 bg-green-50/30 dark:bg-green-500/5' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}
-                                >
-                                    {/* Task Title */}
-                                    <Link
-                                        href={`/dashboard/tasks/${assignment.taskId}`}
-                                        className="col-span-4"
-                                    >
-                                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate hover:text-blue-600 dark:hover:text-blue-400">
-                                            {assignment.taskTitle}
-                                        </p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">{getTimeAgo(assignment.taskCreatedAt)}</p>
-                                    </Link>
-
-                                    {/* Employee */}
-                                    <div className="col-span-3 flex items-center gap-2">
-                                        <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                            {assignment.employee_name?.charAt(0) || '?'}
-                                        </div>
-                                        <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{assignment.employee_name}</span>
-                                    </div>
-
-                                    {/* Status */}
-                                    <div className="col-span-2 text-center">
-                                        <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium ${statusColors[assignment.status]}`}>
-                                            {statusLabels[assignment.status]}
-                                        </span>
-                                    </div>
-
-                                    {/* Action */}
-                                    <div className="col-span-3 text-center">
-                                        {assignment.status !== 'completed' ? (
-                                            <button
-                                                onClick={() => handleMarkComplete(assignment.id)}
-                                                disabled={markingId === assignment.id}
-                                                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1 mx-auto"
-                                            >
-                                                {markingId === assignment.id ? (
-                                                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                                    </svg>
-                                                ) : (
-                                                    <>
-                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                        </svg>
-                                                        منجزة
-                                                    </>
-                                                )}
-                                            </button>
-                                        ) : (
-                                            <span className="text-xs text-green-600 dark:text-green-400">✓ تمت</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-12 text-center shadow-sm">
-                        <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg className="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                        </div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">لم ترسل أي مهام بعد</h3>
-                        <p className="text-slate-500 dark:text-slate-400">اضغط على زر + لإنشاء مهمة جديدة</p>
-                    </div>
-                )}
-            </div>
-        )
-    }
-
-    // STAFF VIEW - Show tasks assigned to user
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">المهام الموكلة إليك</h2>
-                <button
-                    onClick={onRefresh}
-                    className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
-            </div>
-
-            {tasks.length > 0 ? (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 divide-y divide-slate-200 dark:divide-slate-700/50 shadow-sm">
-                    {tasks.map((assignment) => (
-                        <TaskItem key={assignment.id} assignment={assignment} />
-                    ))}
-                </div>
-            ) : (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-12 text-center shadow-sm">
-                    <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">لا توجد مهام</h3>
-                    <p className="text-slate-500 dark:text-slate-400">ستظهر هنا المهام الموكلة إليك</p>
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Circulars Tab Component
-function CircularsTab({ circulars, isAdmin, onRefresh }: {
-    circulars: (Circular | StaffCircular)[]
-    isAdmin: boolean
-    onRefresh: () => void
-}) {
-    const router = useRouter()
-
-    const getTimeAgo = (dateString: string) => {
-        const date = new Date(dateString)
-        const now = new Date()
-        const diffMs = now.getTime() - date.getTime()
-        const diffMins = Math.floor(diffMs / 60000)
-        const diffHours = Math.floor(diffMins / 60)
-        const diffDays = Math.floor(diffHours / 24)
-
-        if (diffDays > 0) return `منذ ${diffDays} يوم`
-        if (diffHours > 0) return `منذ ${diffHours} ساعة`
-        if (diffMins > 0) return `منذ ${diffMins} دقيقة`
-        return 'الآن'
-    }
-
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    {isAdmin ? 'التعاميم المرسلة' : 'التعاميم'}
-                </h2>
-                <button
-                    onClick={onRefresh}
-                    className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
-            </div>
-
-            {circulars.length > 0 ? (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
-                    {circulars.map((circular) => {
-                        const isStaffCircular = 'is_read' in circular
-                        const isRead = isStaffCircular ? circular.is_read : true
-
-                        return (
-                            <Link
-                                key={circular.id}
-                                href={`/dashboard/circulars/${circular.id}`}
-                                className={`block p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-b border-slate-200 dark:border-slate-700/50 last:border-0 ${!isRead ? 'bg-amber-50 dark:bg-amber-500/5' : ''}`}
-                            >
-                                <div className="flex items-start gap-3">
-                                    {/* Unread indicator */}
-                                    {!isRead && (
-                                        <div className="w-2 h-2 bg-amber-500 rounded-full mt-2 shrink-0 animate-pulse" />
-                                    )}
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <h4 className="font-medium text-slate-900 dark:text-white truncate">{circular.title}</h4>
-                                            {isAdmin && 'read_count' in circular && (
-                                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shrink-0">
-                                                    {circular.read_count}/{circular.total_recipients}
-                                                </span>
-                                            )}
-                                            {!isAdmin && !isRead && (
-                                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0">
-                                                    جديد
-                                                </span>
-                                            )}
-                                            {!isAdmin && isRead && (
-                                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 shrink-0">
-                                                    تم القراءة
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
-                                            {circular.content.substring(0, 100)}...
-                                        </p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-2">
-                                            {getTimeAgo(circular.created_at)}
-                                            {circular.creator_name && ` • ${circular.creator_name}`}
-                                        </p>
-                                    </div>
-                                </div>
-                            </Link>
-                        )
-                    })}
-                </div>
-            ) : (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-12 text-center shadow-sm">
-                    <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-                        </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                        {isAdmin ? 'لم ترسل أي تعاميم بعد' : 'لا توجد تعاميم'}
-                    </h3>
-                    <p className="text-slate-500 dark:text-slate-400">
-                        {isAdmin ? 'اضغط على زر الإعلان لإنشاء تعميم جديد' : 'ستظهر هنا التعاميم الموجهة إليك'}
-                    </p>
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Notifications Tab Component
-function NotificationsTab({ notifications, onRefresh, mutateNotifications }: {
-    notifications: Notification[]
-    onRefresh: () => void
-    mutateNotifications: (data?: Notification[] | ((current: Notification[] | undefined) => Notification[] | undefined), shouldRevalidate?: boolean) => void
-}) {
-    const router = useRouter()
-
-    const handleNotificationClick = async (notification: Notification) => {
-        // Mark as read using optimistic update
-        if (!notification.is_read) {
-            // Optimistically update the local cache
-            mutateNotifications(
-                (current: Notification[] | undefined) =>
-                    current?.map(n =>
-                        n.id === notification.id
-                            ? { ...n, is_read: true }
-                            : n
-                    ),
-                false
-            )
-            // Call server action
-            await markNotificationReadAction(notification.id)
-            // Revalidate
-            mutateNotifications()
-        }
-
-        // Navigate to task if related_task_id exists
-        if (notification.related_task_id) {
-            router.push(`/dashboard/tasks/${notification.related_task_id}`)
-        }
-    }
-
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">التنبيهات</h2>
-                <button
-                    onClick={onRefresh}
-                    className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
-            </div>
-
-            {notifications.length > 0 ? (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 divide-y divide-slate-200 dark:divide-slate-700/50 shadow-sm">
-                    {notifications.map((notification) => (
-                        <div
-                            key={notification.id}
-                            onClick={() => handleNotificationClick(notification)}
-                            className={`p-4 transition-colors cursor-pointer ${notification.is_read ? 'opacity-60' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'}`}
-                        >
-                            <div className="flex items-start gap-3">
-                                <div className={`w-2 h-2 rounded-full mt-2 ${notification.is_read ? 'bg-slate-400 dark:bg-slate-500' : 'bg-blue-500 animate-pulse'}`} />
-                                <div className="flex-1">
-                                    <p className="text-slate-900 dark:text-white">{notification.message}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                                            {new Date(notification.created_at).toLocaleDateString('ar-SA')}
-                                        </p>
-                                        {notification.related_task_id && (
-                                            <span className="text-xs text-blue-600 dark:text-blue-400">← اضغط للانتقال للمهمة</span>
-                                        )}
-                                    </div>
-                                </div>
-                                {notification.related_task_id && (
-                                    <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                    </svg>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-12 text-center shadow-sm">
-                    <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-10 h-10 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                        </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">لا توجد تنبيهات</h3>
-                    <p className="text-slate-500 dark:text-slate-400">ستظهر هنا التنبيهات الجديدة</p>
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Employees Tab Component (Admin only) - متابعة المهام
-type EmployeeFilter = 'all' | 'has_active' | 'no_tasks'
-
-function EmployeesTab({ employees }: { employees: EmployeeWithStats[] }) {
-    const [filter, setFilter] = useState<EmployeeFilter>('all')
-
-    // Filter employees (exclude admins)
-    const staffEmployees = employees.filter(emp => emp.role !== 'admin')
-
-    const filteredEmployees = staffEmployees.filter(emp => {
-        switch (filter) {
-            case 'has_active':
-                return emp.stats.activeTasks > 0
-            case 'no_tasks':
-                return emp.stats.totalTasks === 0
-            default:
-                return true
-        }
-    })
-
-    // Calculate totals
-    const totalActive = staffEmployees.reduce((sum, e) => sum + e.stats.activeTasks, 0)
-    const totalCompleted = staffEmployees.reduce((sum, e) => sum + e.stats.completedTasks, 0)
-
-    return (
-        <div className="space-y-4">
-            {/* Header with Management Button */}
-            <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">متابعة المهام</h2>
-                <Link
-                    href="/dashboard/staff"
-                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-xl transition-colors"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    إدارة
-                </Link>
-            </div>
-
-            {/* Summary Stats */}
-            <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-xl border border-slate-200 dark:border-slate-700/50 p-3 text-center">
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{staffEmployees.length}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">موظف</p>
-                </div>
-                <div className="bg-amber-50 dark:bg-amber-500/10 backdrop-blur-xl rounded-xl border border-amber-200 dark:border-amber-500/20 p-3 text-center">
-                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{totalActive}</p>
-                    <p className="text-xs text-amber-600 dark:text-amber-400">نشط</p>
-                </div>
-                <div className="bg-green-50 dark:bg-green-500/10 backdrop-blur-xl rounded-xl border border-green-200 dark:border-green-500/20 p-3 text-center">
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalCompleted}</p>
-                    <p className="text-xs text-green-600 dark:text-green-400">مكتمل</p>
-                </div>
-            </div>
-
-            {/* Filter Buttons */}
-            <div className="flex gap-2 overflow-x-auto pb-2">
-                <button
-                    onClick={() => setFilter('all')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
-                >
-                    الكل ({staffEmployees.length})
-                </button>
-                <button
-                    onClick={() => setFilter('has_active')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
-                >
-                    لديهم نشط ({staffEmployees.filter(e => e.stats.activeTasks > 0).length})
-                </button>
-                <button
-                    onClick={() => setFilter('no_tasks')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'no_tasks'
-                        ? 'bg-slate-500 text-white'
-                        : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                        }`}
-                >
-                    بدون مهام ({staffEmployees.filter(e => e.stats.totalTasks === 0).length})
-                </button>
-            </div>
-
-            {/* Employees Table */}
-            {filteredEmployees.length === 0 ? (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-8 text-center">
-                    <p className="text-slate-500 dark:text-slate-400">
-                        {filter === 'all' ? 'لا يوجد موظفين' : 'لا يوجد موظفين مطابقين للفلتر'}
-                    </p>
-                </div>
-            ) : (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        <div className="col-span-5">الموظف</div>
-                        <div className="col-span-2 text-center">الكل</div>
-                        <div className="col-span-2 text-center">نشط</div>
-                        <div className="col-span-2 text-center">مكتمل</div>
-                        <div className="col-span-1"></div>
-                    </div>
-
-                    {/* Table Rows */}
-                    <div className="divide-y divide-slate-200 dark:divide-slate-700/50">
-                        {filteredEmployees.map(employee => (
-                            <Link
-                                key={employee.id}
-                                href={`/dashboard/staff/${employee.id}`}
-                                className="grid grid-cols-12 gap-2 p-3 items-center hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
-                            >
-                                {/* Employee Info */}
-                                <div className="col-span-5 flex items-center gap-2 min-w-0">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                                        {employee.full_name?.charAt(0) || employee.email.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-slate-900 dark:text-white text-sm truncate">
-                                            {employee.full_name || 'بدون اسم'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* Total Tasks */}
-                                <div className="col-span-2 text-center">
-                                    <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium">
-                                        {employee.stats.totalTasks}
-                                    </span>
-                                </div>
-
-                                {/* Active Tasks */}
-                                <div className="col-span-2 text-center">
-                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${employee.stats.activeTasks > 0
-                                        ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
-                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                                        }`}>
-                                        {employee.stats.activeTasks}
-                                    </span>
-                                </div>
-
-                                {/* Completed Tasks */}
-                                <div className="col-span-2 text-center">
-                                    <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-sm font-medium ${employee.stats.completedTasks > 0
-                                        ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
-                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                                        }`}>
-                                        {employee.stats.completedTasks}
-                                    </span>
-                                </div>
-
-                                {/* Arrow */}
-                                <div className="col-span-1 flex justify-end">
-                                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                    </svg>
-                                </div>
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    )
-}
-
-// Profile Tab Component
-function ProfileTab({ user, profile, onSignOut }: {
-    user: User | null
-    profile: Profile | null
-    onSignOut: () => void
-}) {
-    const [newPassword, setNewPassword] = useState('')
-    const [confirmPassword, setConfirmPassword] = useState('')
-    const [passwordLoading, setPasswordLoading] = useState(false)
-    const [passwordError, setPasswordError] = useState<string | null>(null)
-    const [passwordSuccess, setPasswordSuccess] = useState(false)
-    const [showPasswordForm, setShowPasswordForm] = useState(false)
-
-    const handlePasswordChange = async () => {
-        setPasswordError(null)
-        setPasswordSuccess(false)
-
-        // Validation
-        if (!newPassword || !confirmPassword) {
-            setPasswordError('يرجى ملء جميع الحقول')
-            return
-        }
-
-        if (newPassword.length < 6) {
-            setPasswordError('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
-            return
-        }
-
-        if (newPassword !== confirmPassword) {
-            setPasswordError('كلمتا المرور غير متطابقتين')
-            return
-        }
-
-        setPasswordLoading(true)
-
-        try {
-            const { error } = await supabase.auth.updateUser({ password: newPassword })
-
-            if (error) {
-                setPasswordError(error.message)
-            } else {
-                setPasswordSuccess(true)
-                setNewPassword('')
-                setConfirmPassword('')
-                // Auto-hide success after 3s
-                setTimeout(() => setPasswordSuccess(false), 3000)
-            }
-        } catch {
-            setPasswordError('حدث خطأ غير متوقع')
-        }
-
-        setPasswordLoading(false)
-    }
-
-    return (
-        <div className="space-y-6">
-            {/* Profile Card */}
-            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-6 text-center shadow-sm">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold text-white">
-                    {profile?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{profile?.full_name || 'مستخدم'}</h2>
-                <p className="text-slate-500 dark:text-slate-400 text-sm">{user?.email}</p>
-                <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${profile?.role === 'admin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
-                    }`}>
-                    {profile?.role === 'admin' ? 'مدير النظام' : 'عضو'}
-                </span>
-            </div>
-
-            {/* Notification Settings */}
-            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold text-slate-900 dark:text-white">إعدادات الإشعارات</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">تحكم في الإشعارات الفورية</p>
-                    </div>
-                </div>
-                <PushNotificationToggle userId={user?.id || ''} userEmail={user?.email} userName={profile?.full_name || undefined} />
-            </div>
-
-            {/* Security Settings - Password Change */}
-            <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
-                {/* Header - Always visible as clickable button */}
-                <button
-                    onClick={() => {
-                        setShowPasswordForm(!showPasswordForm)
-                        if (!showPasswordForm) {
-                            setPasswordError(null)
-                            setPasswordSuccess(false)
-                            setNewPassword('')
-                            setConfirmPassword('')
-                        }
-                    }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors text-right"
-                >
-                    <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
-                        <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                    </div>
-                    <span className="text-slate-900 dark:text-white flex-1">تغيير كلمة المرور</span>
-                    <svg className={`w-5 h-5 text-slate-500 transition-transform ${showPasswordForm ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-
-                {/* Expandable Form */}
-                {showPasswordForm && (
-                    <div className="px-4 pb-4 border-t border-slate-200 dark:border-slate-700/50 pt-4">
-                        {/* Success Message */}
-                        {passwordSuccess && (
-                            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm mb-4 flex items-center gap-2">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                تم تغيير كلمة المرور بنجاح
-                            </div>
-                        )}
-
-                        {/* Error Message */}
-                        {passwordError && (
-                            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm mb-4">
-                                {passwordError}
-                            </div>
-                        )}
-
-                        <div className="space-y-3">
-                            <input
-                                type="password"
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                placeholder="كلمة المرور الجديدة"
-                                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                            />
-                            <input
-                                type="password"
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                placeholder="تأكيد كلمة المرور الجديدة"
-                                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                            />
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handlePasswordChange}
-                                    disabled={passwordLoading}
-                                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {passwordLoading ? (
-                                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
-                                    ) : (
-                                        <>
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                            حفظ
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setShowPasswordForm(false)}
-                                    className="px-4 py-3 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 font-medium rounded-xl transition-colors"
-                                >
-                                    إلغاء
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Settings */}
-            {profile?.role === 'admin' && (
-                <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
-                    <Link href="/dashboard/staff" className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors text-right">
-                        <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                        </div>
-                        <span className="text-slate-900 dark:text-white flex-1">إدارة الموظفين</span>
-                        <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                    </Link>
-                </div>
-            )}
-
-            {/* Sign Out */}
-            <button
-                onClick={onSignOut}
-                className="w-full py-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 dark:text-red-400 font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-            >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                تسجيل الخروج
-            </button>
-
-            {/* App Info */}
-            <p className="text-center text-slate-500 text-sm">
-                Ops Room v1.0.0
-            </p>
-        </div>
-    )
-}
-
-
-// Create Task Modal Component
-function CreateTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-    const [title, setTitle] = useState('')
-    const [description, setDescription] = useState('')
-    const [loading, setLoading] = useState(false)
-
-    const handleCreate = async () => {
-        if (!title.trim()) return
-        setLoading(true)
-
-        try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            const { error } = await supabase
-                .from('tasks')
-                .insert({
-                    title,
-                    description,
-                    created_by: user.id
-                })
-
-            if (!error) {
-                onCreated()
-                onClose()
-            }
-        } catch (error) {
-            console.error('Error creating task:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-lg bg-slate-800 rounded-t-3xl border-t border-slate-700/50 p-6 animate-in slide-in-from-bottom">
-                <div className="w-12 h-1 bg-slate-600 rounded-full mx-auto mb-6" />
-
-                <h2 className="text-xl font-bold text-white mb-6">مهمة جديدة</h2>
-
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">العنوان</label>
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="عنوان المهمة"
-                            className="w-full h-12 px-4 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 transition-all"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">الوصف</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="وصف المهمة (اختياري)"
-                            rows={3}
-                            className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 transition-all resize-none"
-                        />
-                    </div>
-
-                    <button
-                        onClick={handleCreate}
-                        disabled={loading || !title.trim()}
-                        className="w-full h-12 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-blue-500/40"
-                    >
-                        {loading ? 'جاري الإنشاء...' : 'إنشاء المهمة'}
-                    </button>
-                </div>
-            </div>
-        </div>
     )
 }
 

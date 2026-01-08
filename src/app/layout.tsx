@@ -16,18 +16,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ops Room",
-  description: "Ops Room Application",
+  title: "Harmuni Task",
+  description: "Harmuni Task Application",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Ops Room",
+    title: "Harmuni Task",
   },
-};
-
-export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#3b82f6",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

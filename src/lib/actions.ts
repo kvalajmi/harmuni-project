@@ -6,9 +6,10 @@ import { sendTaskEmailsBatch, TaskEmailData } from './email'
 import { sendPushNotificationAction } from './onesignal-server'
 
 // Create a server-side Supabase client with service role for admin operations
+// Service key must be set in environment variables
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndlZmpzeHVnb3poaHp1YmR0cGViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njg4MzI0MCwiZXhwIjoyMDgyNDU5MjQwfQ.FpHEEURuxB0CY5bsT329F-bUUf6lYYCptUlWYsuwR4Q',
+    process.env.SUPABASE_SERVICE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
@@ -177,31 +178,13 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
             }
 
             // 5b. Send push notifications via OneSignal
-            // DEBUG: Log the exact user IDs being sent
-            console.log('📱 ═══════════════════════════════════════════')
-            console.log('📱 PUSH NOTIFICATION DEBUG')
-            console.log('📱 Sending to user IDs:', JSON.stringify(userIds))
-            console.log('📱 Expected iPhone ID: df3a4d08-8d1f-424b-abac-b580499648df')
-            console.log('📱 Total users:', userIds.length)
-            userIds.forEach((id, index) => {
-                const isMatch = id === 'df3a4d08-8d1f-424b-abac-b580499648df'
-                console.log(`📱 User ${index + 1}: ${id} ${isMatch ? '✅ MATCH!' : '❌ NO MATCH'}`)
-            })
-            console.log('📱 ═══════════════════════════════════════════')
-
             sendPushNotificationAction({
                 userIds: userIds,
                 title: 'مهمة جديدة 📋',
                 body: `تم تعيين مهمة لك: ${title}`,
-                url: `https://opsroom.vercel.app/dashboard/tasks/${task.id}`
-            }).then(result => {
-                if (result.success) {
-                    console.log('[Push] ✅ Notifications sent successfully')
-                } else {
-                    console.error('[Push] ❌ Failed:', result.error)
-                }
+                url: `https://harmuni.org/dashboard/tasks/${task.id}`
             }).catch(err => {
-                console.error('[Push] ❌ Error:', err)
+                console.error('[Push] Error:', err)
             })
         }
 

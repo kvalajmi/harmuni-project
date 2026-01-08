@@ -1,6 +1,6 @@
 {
-  "name": "Ops Room",
-  "short_name": "OpsRoom",
+  "name": "Harmuni Task",
+  "short_name": "Harmuni Task",
   "description": "Ops Room Application",
   "start_url": "/",
   "display": "standalone",

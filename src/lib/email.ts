@@ -33,7 +33,7 @@ export async function sendTaskEmail(data: TaskEmailData): Promise<{ success: boo
 
   try {
     const { error } = await resend.emails.send({
-      from: 'Ops Room <noreply@harmuni.org>',
+      from: 'Harmuni Task <noreply@harmuni.org>',
       to: [to],
       subject: `📋 مهمة جديدة: ${taskTitle}`,
       html: `
@@ -51,7 +51,7 @@ export async function sendTaskEmail(data: TaskEmailData): Promise<{ success: boo
         ✓
       </div>
       <h1 style="color: #ffffff; font-size: 24px; margin: 20px 0 10px;">مهمة جديدة</h1>
-      <p style="color: #94a3b8; margin: 0;">تم تعيين مهمة جديدة لك في Ops Room</p>
+      <p style="color: #94a3b8; margin: 0;">تم تعيين مهمة جديدة لك في Harmuni Task</p>
     </div>
 
     <!-- Content Card -->
@@ -90,7 +90,7 @@ export async function sendTaskEmail(data: TaskEmailData): Promise<{ success: boo
     <!-- Footer -->
     <div style="text-align: center; padding: 24px 0;">
       <p style="color: #64748b; font-size: 12px; margin: 0;">
-        Ops Room - نظام إدارة المهام والتوزيع
+        Harmuni Task - نظام إدارة المهام والتوزيع
       </p>
     </div>
   </div>
@@ -163,7 +163,7 @@ export async function sendReminderEmail(data: ReminderEmailData): Promise<{ succ
 
   try {
     const { error } = await resend.emails.send({
-      from: 'Ops Room <noreply@harmuni.org>',
+      from: 'Harmuni Task <noreply@harmuni.org>',
       to: [to],
       subject: `${emoji} تذكير: لديك ${items.length} ${typeLabel}`,
       html: `
@@ -197,7 +197,7 @@ export async function sendReminderEmail(data: ReminderEmailData): Promise<{ succ
       ${itemsHtml}
 
       <!-- CTA Button -->
-      <a href="https://opsroom.vercel.app/dashboard" style="display: block; text-align: center; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 600; margin-top: 20px;">
+      <a href="https://harmuni.org/dashboard" style="display: block; text-align: center; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 600; margin-top: 20px;">
         فتح التطبيق
       </a>
     </div>
@@ -205,7 +205,7 @@ export async function sendReminderEmail(data: ReminderEmailData): Promise<{ succ
     <!-- Footer -->
     <div style="text-align: center; padding: 24px 0;">
       <p style="color: #64748b; font-size: 12px; margin: 0;">
-        Ops Room - نظام إدارة المهام والتوزيع
+        Harmuni Task - نظام إدارة المهام والتوزيع
       </p>
     </div>
   </div>

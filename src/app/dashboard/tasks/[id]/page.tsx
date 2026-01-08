@@ -2,7 +2,9 @@
 
 import { useState, useEffect, use, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -16,23 +18,33 @@ import {
     updateTaskStatusAction,
     TaskComment
 } from '@/lib/staff-actions'
+import { SlideToComplete } from '@/components/slide-to-complete'
 
 export default function TaskDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
+    const { user, profile, loading: authLoading } = useAuth()
     const [task, setTask] = useState<TaskDetails | null>(null)
     const [comments, setComments] = useState<TaskComment[]>([])
     const [loading, setLoading] = useState(true)
-    const [isAdmin, setIsAdmin] = useState(false)
-    const [userId, setUserId] = useState<string>('')
     const [newComment, setNewComment] = useState('')
     const [sending, setSending] = useState(false)
     const [taskStatus, setTaskStatus] = useState<'open' | 'completed'>('open')
     const chatEndRef = useRef<HTMLDivElement>(null)
     const router = useRouter()
 
+    const isAdmin = profile?.role === 'admin'
+    const userId = user?.id || ''
+
+    // Auth check and initial load
     useEffect(() => {
-        checkAndLoad()
-    }, [id])
+        if (!authLoading) {
+            if (!user) {
+                router.push('/login')
+                return
+            }
+            loadTaskData()
+        }
+    }, [id, authLoading, user])
 
     useEffect(() => {
         // Scroll to bottom when comments change
@@ -57,20 +69,40 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                     console.log('[Realtime] New comment received:', payload)
 
                     // Get the new comment with user info
-                    const newCommentData = payload.new as { id: string; user_id: string; content: string; created_at: string }
+                    const newCommentData = payload.new as { id: string; user_id: string; content: string; created_at: string; task_id: string }
 
-                    // Avoid duplicates (if the current user sent the comment, it's already added)
+                    // Skip if it's our own comment (already added optimistically)
+                    if (newCommentData.user_id === userId) {
+                        return
+                    }
+
+                    // Fetch just the user profile for the new comment
+                    const { data: userProfile } = await supabase
+                        .from('profiles')
+                        .select('full_name, role')
+                        .eq('id', newCommentData.user_id)
+                        .single()
+
+                    // Create the complete comment object
+                    const newComment: TaskComment = {
+                        id: newCommentData.id,
+                        task_id: newCommentData.task_id,
+                        user_id: newCommentData.user_id,
+                        content: newCommentData.content,
+                        created_at: newCommentData.created_at,
+                        user: {
+                            full_name: userProfile?.full_name || 'Unknown',
+                            role: userProfile?.role || 'member'
+                        }
+                    }
+
+                    // Append the new comment to existing comments
                     setComments(prev => {
+                        // Check for duplicates
                         if (prev.some(c => c.id === newCommentData.id)) {
                             return prev
                         }
-
-                        // Fetch fresh comments to get proper user info
-                        getTaskCommentsAction(id).then(updatedComments => {
-                            setComments(updatedComments)
-                        })
-
-                        return prev
+                        return [...prev, newComment]
                     })
                 }
             )
@@ -82,24 +114,17 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
             console.log('[Realtime] Cleaning up subscription')
             supabase.removeChannel(channel)
         }
-    }, [id])
+    }, [id, userId])
 
-    const checkAndLoad = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            router.push('/login')
-            return
-        }
-        setUserId(user.id)
+    const loadTaskData = async () => {
+        setLoading(true)
 
-        // PARALLEL LOADING: Load profile, task, and comments at the same time! 🚀
-        const [profileResult, taskData, commentsData] = await Promise.all([
-            supabase.from('profiles').select('role').eq('id', user.id).single(),
+        // PARALLEL LOADING: Load task and comments at the same time! 🚀
+        const [taskData, commentsData] = await Promise.all([
             getTaskDetailsAction(id),
             getTaskCommentsAction(id)
         ])
 
-        setIsAdmin(profileResult.data?.role === 'admin')
         setTask(taskData)
         setComments(commentsData)
 
@@ -127,12 +152,40 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
 
     const handleSendComment = async () => {
         if (!newComment.trim() || !userId) return
-        setSending(true)
-        await addTaskCommentAction(id, userId, newComment.trim())
+
+        const commentText = newComment.trim()
         setNewComment('')
-        // Reload comments
-        const updatedComments = await getTaskCommentsAction(id)
-        setComments(updatedComments)
+        setSending(true)
+
+        // Optimistically add the comment to the UI
+        const tempId = `temp-${Date.now()}`
+        const optimisticComment: TaskComment = {
+            id: tempId,
+            task_id: id,
+            user_id: userId,
+            content: commentText,
+            created_at: new Date().toISOString(),
+            user: {
+                full_name: profile?.full_name || 'You',
+                role: profile?.role || 'member'
+            }
+        }
+
+        setComments(prev => [...prev, optimisticComment])
+
+        // Send the comment to the server
+        const result = await addTaskCommentAction(id, userId, commentText)
+
+        // If successful, replace temp comment with real one
+        if (result.success && result.data) {
+            setComments(prev => {
+                // Remove the optimistic comment and add the real one
+                return prev.map(c => c.id === tempId ? { ...result.data!, user: optimisticComment.user } : c)
+            })
+        } else {
+            // On error, remove the optimistic comment
+            setComments(prev => prev.filter(c => c.id !== tempId))
+        }
         setSending(false)
     }
 
@@ -140,6 +193,8 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
         const newStatus = taskStatus === 'open' ? 'completed' : 'open'
         await updateTaskStatusAction(id, newStatus)
         setTaskStatus(newStatus)
+        // Reload task data to ensure everything is in sync
+        await loadTask()
     }
 
     const getTimeElapsed = (dateString: string) => {
@@ -191,7 +246,9 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
                 <div className="text-center">
                     <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">المهمة غير موجودة</h2>
-                    <Button onClick={() => router.push('/dashboard')}>العودة للوحة التحكم</Button>
+                    <Link href="/dashboard?tab=tasks" prefetch>
+                        <Button>العودة للمهام</Button>
+                    </Link>
                 </div>
             </div>
         )
@@ -204,11 +261,11 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
             {/* Header */}
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700/50">
                 <div className="flex items-center gap-3 px-4 py-4">
-                    <button onClick={() => router.push(isAdmin ? '/dashboard?tab=employees' : '/dashboard?tab=tasks')} className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <Link href="/dashboard?tab=tasks" prefetch className="p-2 -mr-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
-                    </button>
+                    </Link>
                     <h1 className="text-lg font-bold text-slate-900 dark:text-white flex-1">تفاصيل المهمة</h1>
 
                     {/* Status Badge */}
@@ -254,36 +311,19 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span>{new Date(task.created_at).toLocaleDateString('ar-SA')}</span>
+                            <span>{new Date(task.created_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}</span>
                         </div>
                     </div>
 
-                    {/* Admin Toggle Button */}
+                    {/* Admin Slide Toggle - سحب لإغلاق/فتح المهمة */}
                     {isAdmin && (
                         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50">
-                            <Button
-                                onClick={handleToggleStatus}
-                                variant={taskStatus === 'open' ? 'default' : 'outline'}
-                                className={taskStatus === 'open'
-                                    ? 'bg-slate-600 hover:bg-slate-500'
-                                    : 'border-green-500 text-green-400 hover:bg-green-500/10'}
-                            >
-                                {taskStatus === 'open' ? (
-                                    <>
-                                        <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        إغلاق المهمة
-                                    </>
-                                ) : (
-                                    <>
-                                        <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                        </svg>
-                                        إعادة فتح المهمة
-                                    </>
-                                )}
-                            </Button>
+                            <SlideToComplete
+                                onComplete={handleToggleStatus}
+                                text={taskStatus === 'open' ? 'اسحب لإغلاق المهمة' : 'اسحب لإعادة فتح المهمة'}
+                                completedText={taskStatus === 'open' ? 'تم الإغلاق!' : 'تم الفتح!'}
+                                variant={taskStatus === 'open' ? 'close' : 'reopen'}
+                            />
                         </div>
                     )}
                 </div>

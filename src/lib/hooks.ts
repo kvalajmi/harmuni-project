@@ -8,6 +8,9 @@ import {
     getCreatedTasksAction,
     getAdminTasksWithAssignmentsAction,
     getEmployeeProfileAction,
+    getEmployeeProfileBasicAction,
+    getEmployeeTasksAction,
+    getEmployeeCircularsAction,
     getTaskDetailsAction,
     getTaskCommentsAction,
     EmployeeWithStats,
@@ -15,17 +18,22 @@ import {
     AdminTaskWithAssignments,
     EmployeeProfileData,
     TaskDetails,
-    TaskComment
+    TaskComment,
+    EmployeeTask,
+    EmployeeCircular
 } from './staff-actions'
 import { getAdminCircularsAction, getStaffCircularsAction, Circular } from './circular-actions'
 
-// SWR Configuration
+// SWR Configuration - Optimized for better caching
 const swrConfig = {
-    revalidateOnFocus: true,       // Refetch when user returns to app
-    revalidateOnReconnect: true,   // Refetch on reconnect
-    dedupingInterval: 5000,        // 5 seconds (was 30s - too long!)
+    revalidateOnFocus: false,      // Don't refetch on focus to prevent unnecessary requests
+    revalidateOnReconnect: false,  // Don't refetch on reconnect
+    revalidateIfStale: false,      // Don't refetch if data exists
+    dedupingInterval: 120000,      // 2 minutes - prevents duplicate requests
+    focusThrottleInterval: 120000, // Throttle focus revalidation to 2 minutes
     errorRetryCount: 3,
     refreshInterval: 0,            // No auto refresh by default
+    keepPreviousData: true,        // Keep showing old data while fetching
 }
 
 // Staff circular type
@@ -41,7 +49,7 @@ export function useEmployeesWithStats() {
     return useSWR<EmployeeWithStats[]>(
         'employees-with-stats',
         () => getEmployeesWithStatsAction(),
-        { ...swrConfig, revalidateIfStale: true }
+        swrConfig
     )
 }
 
@@ -77,7 +85,7 @@ export function useNotifications(userId: string | null) {
     return useSWR(
         userId ? ['notifications', userId] : null,
         () => getNotificationsAction(userId!),
-        { ...swrConfig, refreshInterval: 60000 } // Refresh every 60 seconds
+        { ...swrConfig, refreshInterval: 120000, revalidateOnFocus: true } // Refresh every 2 minutes, revalidate on focus for notifications
     )
 }
 
@@ -109,6 +117,32 @@ export function useEmployeeProfile(employeeId: string | null) {
     )
 }
 
+// Lightweight profile hook for initial load
+export function useEmployeeProfileBasic(employeeId: string | null) {
+    return useSWR(
+        employeeId ? ['employee-profile-basic', employeeId] : null,
+        () => getEmployeeProfileBasicAction(employeeId!),
+        swrConfig
+    )
+}
+
+// Separate hooks for lazy loading tasks and circulars
+export function useEmployeeTasks(employeeId: string | null) {
+    return useSWR<{ activeTasks: EmployeeTask[], completedTasks: EmployeeTask[] }>(
+        employeeId ? ['employee-tasks', employeeId] : null,
+        () => getEmployeeTasksAction(employeeId!),
+        swrConfig
+    )
+}
+
+export function useEmployeeCirculars(employeeId: string | null) {
+    return useSWR<EmployeeCircular[]>(
+        employeeId ? ['employee-circulars', employeeId] : null,
+        () => getEmployeeCircularsAction(employeeId!),
+        swrConfig
+    )
+}
+
 // ============== TASK DETAILS HOOKS ==============
 
 export function useTaskDetails(taskId: string | null) {
@@ -123,7 +157,7 @@ export function useTaskComments(taskId: string | null) {
     return useSWR<TaskComment[]>(
         taskId ? ['task-comments', taskId] : null,
         () => getTaskCommentsAction(taskId!),
-        { ...swrConfig, refreshInterval: 5000 } // Refresh comments every 5 seconds for live chat
+        { ...swrConfig, refreshInterval: 30000 } // Reduced to 30 seconds to avoid excessive requests
     )
 }
 
@@ -139,6 +173,18 @@ export const mutationKeys = {
     adminCirculars: (userId: string) => ['admin-circulars', userId],
     staffCirculars: (userId: string) => ['staff-circulars', userId],
     employeeProfile: (employeeId: string) => ['employee-profile', employeeId],
+    employeeProfileBasic: (employeeId: string) => ['employee-profile-basic', employeeId],
+    employeeTasks: (employeeId: string) => ['employee-tasks', employeeId],
+    employeeCirculars: (employeeId: string) => ['employee-circulars', employeeId],
     taskDetails: (taskId: string) => ['task-details', taskId],
     taskComments: (taskId: string) => ['task-comments', taskId],
+}
+
+// Helper function to create SWR config with manual refresh
+export function createRefreshableConfig(intervalMs: number = 0) {
+    return {
+        ...swrConfig,
+        refreshInterval: intervalMs,
+        revalidateOnMount: true, // Always fetch on mount
+    }
 }

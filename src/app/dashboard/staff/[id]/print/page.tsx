@@ -295,13 +295,12 @@ export default function PrintEmployeeReportPage({ params }: { params: Promise<{ 
                                             <td className="border border-slate-300 p-2">{task.task_title}</td>
                                             <td className="border border-slate-300 p-2 text-sm">{formatDateTime(task.assigned_at)}</td>
                                             <td className="border border-slate-300 p-2">
-                                                <span className={`px-2 py-0.5 rounded text-xs ${
-                                                    task.status === 'completed'
+                                                <span className={`px-2 py-0.5 rounded text-xs ${task.status === 'completed'
                                                         ? 'bg-green-100 text-green-700'
                                                         : task.status === 'in_progress'
-                                                        ? 'bg-blue-100 text-blue-700'
-                                                        : 'bg-amber-100 text-amber-700'
-                                                }`}>
+                                                            ? 'bg-blue-100 text-blue-700'
+                                                            : 'bg-amber-100 text-amber-700'
+                                                    }`}>
                                                     {task.status === 'completed' ? 'مكتمل' : task.status === 'in_progress' ? 'قيد التنفيذ' : 'معلق'}
                                                 </span>
                                             </td>
@@ -366,7 +365,7 @@ export default function PrintEmployeeReportPage({ params }: { params: Promise<{ 
 
                     {/* Footer */}
                     <div className="mt-12 pt-6 border-t-2 border-[#c9a86c] text-center text-sm text-slate-500">
-                        <p>هذا الكشف صادر من نظام Ops Room - هارموني بلس للتجارة العامة</p>
+                        <p>هذا الكشف صادر من نظام Harmuni Task - هارموني بلس للتجارة العامة</p>
                         <p className="mt-1">تاريخ الطباعة: {formatDateTime(new Date().toISOString())}</p>
                     </div>
 
