@@ -14,19 +14,21 @@ export default async function StaffProfilePage({ params }: Props) {
     const { id } = await params
 
     // Fetch initial data
-    const profileData = await getEmployeeProfileAction(id)
+    // const profileData = await getEmployeeProfileAction(id)
 
-    if (!profileData) {
-        notFound()
-    }
+    // if (!profileData) {
+    //     notFound()
+    // }
 
     // Get initial tasks
-    const tasksData = await getEmployeeTasksAction(id)
+    // const tasksData = await getEmployeeTasksAction(id)
 
-    const initialData = {
-        ...profileData,
-        ...tasksData
-    }
+    // const initialData = {
+    //     ...profileData,
+    //     ...tasksData
+    // }
+
+    const initialData = { profile: { full_name: 'Debug User' } } as any
 
     return (
         <div className="p-4 md:p-6 lg:p-8">
@@ -38,18 +40,18 @@ export default async function StaffProfilePage({ params }: Props) {
                     <svg className="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    <span>{initialData.profile.full_name}</span>
-                    <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
-                        v3.1-NO-BOUNDARY
+                    <span>Debug User</span>
+                    <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">
+                        v3.2-SAFE-MODE
                     </span>
                 </div>
 
-                <div className="p-8 border-4 border-green-500 rounded-xl bg-green-50 text-green-900">
-                    <h1 className="text-3xl font-bold">✅ NO ERROR BOUNDARY TEST ✅</h1>
-                    <p className="mt-4">If you see this, ErrorBoundary was the culprit!</p>
-                    <div className="mt-4 p-4 bg-white rounded overflow-auto max-h-96 text-xs whitespace-pre-wrap font-mono">
-                        {JSON.stringify(initialData, null, 2)}
-                    </div>
+                <div className="p-8 border-2 border-dashed border-red-300 rounded-xl bg-red-50 text-center">
+                    <h2 className="text-xl font-bold text-red-800 mb-2">SAFE MODE DIAGNOSTIC</h2>
+                    <p className="text-red-600">
+                        Data fetching disabled. Loading.tsx disabled.
+                        If this page loads, the issue was in data fetching or loading.tsx.
+                    </p>
                 </div>
             </div>
         </div>
