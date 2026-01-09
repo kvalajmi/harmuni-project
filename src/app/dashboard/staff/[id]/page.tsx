@@ -40,9 +40,7 @@ export default async function StaffProfilePage({ params }: Props) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                     <span>{initialData.profile.full_name}</span>
-                    <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 border border-green-200">
-                        v3.4-FULL
-                    </span>
+
                 </div>
 
                 <EmployeeProfileContent

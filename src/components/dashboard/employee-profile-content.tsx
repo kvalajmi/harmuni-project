@@ -13,7 +13,6 @@ import { useEmployeeTasks, useEmployeeCirculars } from '@/lib/hooks'
 import { EmployeeProfileData } from '@/lib/staff-actions'
 
 export function EmployeeProfileContent({ initialData, employeeId }: { initialData: EmployeeProfileData, employeeId: string }) {
-    console.log('DEBUG: EmployeeProfileContent Render (MINIMAL)', { initialData }) // DEBUG
 
     const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'circulars'>('overview')
     // const { showToast } = useToast()
@@ -93,15 +92,6 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
 
     return (
         <div className="space-y-6">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800 flex items-center justify-between">
-                <span>
-                    <strong>v3.4-FIXED-HOOKS:</strong> Data fetching restored with safe checks.
-                </span>
-                <span className="text-xs bg-white px-2 py-1 rounded border border-green-200">
-                    Tasks: {activeTasks.length}, Circulars: {safeCirculars.length}
-                </span>
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="p-4">
                     <div className="flex items-center gap-2">
