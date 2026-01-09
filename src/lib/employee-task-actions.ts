@@ -153,7 +153,7 @@ export async function getUserEmployeeTasksAction(userId: string): Promise<Employ
             .select(`
                 *,
                 creator:profiles!employee_tasks_created_by_fkey(full_name, role),
-                employee_task_assignments!inner(user_id, status, updated_at, user:profiles(full_name)),
+                employee_task_assignments(user_id, status, updated_at, user:profiles(full_name)),
                 employee_task_comments(count)
             `)
             .or(`created_by.eq.${userId},employee_task_assignments.user_id.eq.${userId}`)
