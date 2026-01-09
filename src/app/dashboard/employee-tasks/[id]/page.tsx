@@ -43,11 +43,15 @@ export default function EmployeeTaskDetailsPage({ params }: { params: Promise<{ 
         setLoading(true)
         try {
             const data = await getEmployeeTaskDetailsAction(taskId)
-            setTask(data.task)
-            setAssignments(data.assignments)
-            setComments(data.comments)
+            if (data) {
+                setTask(data.task)
+                setAssignments(data.assignments || [])
+                setComments(data.comments || [])
+            }
         } catch (error) {
             console.error('Error loading task details:', error)
+            setAssignments([])
+            setComments([])
         } finally {
             setLoading(false)
         }
@@ -262,7 +266,7 @@ export default function EmployeeTaskDetailsPage({ params }: { params: Promise<{ 
                         الموظفون المعينون
                     </h3>
                     <div className="space-y-3">
-                        {assignments.map(assignment => (
+                        {(assignments || []).map(assignment => (
                             <div key={assignment.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">
@@ -305,17 +309,17 @@ export default function EmployeeTaskDetailsPage({ params }: { params: Promise<{ 
                 {/* Comments */}
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                        التعليقات ({comments.length})
+                        التعليقات ({(comments || []).length})
                     </h3>
 
                     {/* Comments List */}
                     <div className="space-y-4 mb-6 max-h-96 overflow-y-auto">
-                        {comments.length === 0 ? (
+                        {(comments || []).length === 0 ? (
                             <p className="text-center text-slate-500 dark:text-slate-400 py-8">
                                 لا توجد تعليقات بعد
                             </p>
                         ) : (
-                            comments.map(comment => (
+                            (comments || []).map(comment => (
                                 <div key={comment.id} className="flex gap-3">
                                     <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
                                         {comment.user?.full_name?.charAt(0) || '؟'}
