@@ -14,24 +14,20 @@ interface Props {
 export default async function StaffProfilePage({ params }: Props) {
     const { id } = await params
 
-    // Fetch initial data
+    // Fetch initial data - RESTORED
     const profileData = await getEmployeeProfileAction(id)
 
     if (!profileData) {
         notFound()
     }
 
-    // Get initial tasks
-    const tasksData = await getEmployeeTasksAction(id)
+    // Tasks fetching - STILL DISABLED for diagnostics
+    // const tasksData = await getEmployeeTasksAction(id)
 
-    const initialData: EmployeeProfileData = {
-        ...profileData,
-        ...tasksData
-    }
-
-    /*
+    // Construct initial data with real profile but clear tasks
     const initialData: EmployeeProfileData = {
         profile: profileData.profile,
+        // Stubbed task data to prevent serialization issues from tasks
         activeTasks: [],
         completedTasks: [],
         circulars: [],
@@ -42,7 +38,6 @@ export default async function StaffProfilePage({ params }: Props) {
             unreadCircularCount: 0
         }
     }
-    */
 
     return (
         <div className="p-4 md:p-6 lg:p-8">
@@ -55,9 +50,13 @@ export default async function StaffProfilePage({ params }: Props) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                     <span>{initialData.profile.full_name}</span>
-                    <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
-                        v3.5-RESTORED-LOADING
+                    <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700 border border-yellow-200">
+                        v3.3-PROFILE-ONLY
                     </span>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4 text-sm text-yellow-800">
+                    <strong>DIAGNOSTIC PHASE 2:</strong> Profile Data Loaded. Tasks Data Stubbed.
                 </div>
 
                 <EmployeeProfileContent
