@@ -31,10 +31,21 @@ export function createSupabaseBrowser() {
     }
 
     // This creates a client that properly handles cookies and auth
-    // Use default cookie handling from @supabase/ssr
     browserClient = createBrowserClient(
         supabaseUrl,
-        supabaseAnonKey
+        supabaseAnonKey,
+        {
+            auth: {
+                // Disable lock to prevent "this.lock is not a function" error
+                // caused by some browsers/extensions or PWA context
+                lock: {
+                    acquire: () => Promise.resolve(() => Promise.resolve()),
+                    release: () => Promise.resolve()
+                } as any,
+                persistSession: true,
+                autoRefreshToken: true,
+            }
+        }
     )
 
     return browserClient
