@@ -22,13 +22,14 @@ export default async function StaffProfilePage({ params }: Props) {
     }
 
     // Get initial tasks
-    // const tasksData = await getEmployeeTasksAction(id)
+    const tasksData = await getEmployeeTasksAction(id)
 
-    // const initialData = {
-    //     ...profileData,
-    //     ...tasksData
-    // }
+    const initialData: EmployeeProfileData = {
+        ...profileData,
+        ...tasksData
+    }
 
+    /*
     const initialData: EmployeeProfileData = {
         profile: profileData.profile,
         activeTasks: [],
@@ -41,6 +42,7 @@ export default async function StaffProfilePage({ params }: Props) {
             unreadCircularCount: 0
         }
     }
+    */
 
     return (
         <div className="p-4 md:p-6 lg:p-8">
@@ -54,7 +56,7 @@ export default async function StaffProfilePage({ params }: Props) {
                     </svg>
                     <span>{initialData.profile.full_name}</span>
                     <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
-                        v3.3-PROFILE-ONLY
+                        v3.4-FULL_DATA
                     </span>
                 </div>
 
