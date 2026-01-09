@@ -188,3 +188,16 @@ export function createRefreshableConfig(intervalMs: number = 0) {
         revalidateOnMount: true, // Always fetch on mount
     }
 }
+
+// ============== EMPLOYEE TASKS HOOKS ==============
+
+import { getAllEmployeeTasksAction, getUserEmployeeTasksAction, EmployeeTask as EmployeeTaskType } from './employee-task-actions'
+
+// Hook for employee tasks (between employees)
+export function useEmployeeTasksList(userId: string | null, isAdmin: boolean) {
+    return useSWR<EmployeeTaskType[]>(
+        userId ? ['employee-tasks-list', userId, isAdmin] : null,
+        () => isAdmin ? getAllEmployeeTasksAction() : getUserEmployeeTasksAction(userId!),
+        swrConfig
+    )
+}

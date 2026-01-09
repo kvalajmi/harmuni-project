@@ -1,54 +1,32 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import {
-    getAllEmployeeTasksAction,
-    getUserEmployeeTasksAction,
-    closeEmployeeTaskAction,
-    EmployeeTask
-} from '@/lib/employee-task-actions'
+import { closeEmployeeTaskAction } from '@/lib/employee-task-actions'
+import { useEmployeeTasksList } from '@/lib/hooks'
 import { CreateEmployeeTaskDrawer } from '@/components/create-employee-task-drawer'
 import { formatDistanceToNow } from 'date-fns'
 import { ar } from 'date-fns/locale'
 
 export default function EmployeeTasksTab() {
     const { user, profile } = useAuth()
-    const [tasks, setTasks] = useState<EmployeeTask[]>([])
-    const [loading, setLoading] = useState(true)
     const [showCreateTask, setShowCreateTask] = useState(false)
     const [filter, setFilter] = useState<'all' | 'created' | 'assigned'>('all')
     const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('open')
 
     const isAdmin = profile?.role === 'admin'
 
-    useEffect(() => {
-        loadTasks()
-    }, [user?.id, isAdmin])
-
-    const loadTasks = async () => {
-        if (!user?.id) return
-
-        setLoading(true)
-        try {
-            const data = isAdmin
-                ? await getAllEmployeeTasksAction()
-                : await getUserEmployeeTasksAction(user.id)
-            setTasks(data)
-        } catch (error) {
-            console.error('Error loading tasks:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
+    // Use SWR hook for optimized data fetching and caching
+    const { data: tasks = [], isLoading: loading, mutate } = useEmployeeTasksList(user?.id || null, isAdmin)
 
     const handleCloseTask = async (taskId: string) => {
         if (!user?.id) return
 
         const result = await closeEmployeeTaskAction(taskId, user.id, isAdmin)
         if (result.success) {
-            await loadTasks()
+            // Refresh the cache after successful close
+            mutate()
         } else {
             alert(result.error || 'فشل في إغلاق المهمة')
         }
@@ -317,7 +295,8 @@ export default function EmployeeTasksTab() {
                     isOpen={showCreateTask}
                     onClose={() => {
                         setShowCreateTask(false)
-                        loadTasks()
+                        // Refresh the cache after creating new task
+                        mutate()
                     }}
                 />
             )}
