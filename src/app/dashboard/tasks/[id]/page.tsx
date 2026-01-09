@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TaskDetailsSkeleton } from '@/components/skeletons'
+import { ErrorBoundary } from '@/components/error-boundary'
 import {
     getTaskDetailsAction,
     TaskDetails,
@@ -20,7 +21,15 @@ import {
 } from '@/lib/staff-actions'
 import { SlideToComplete } from '@/components/slide-to-complete'
 
-export default function TaskDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TaskDetailsPage(props: { params: Promise<{ id: string }> }) {
+    return (
+        <ErrorBoundary>
+            <TaskDetailsContent params={props.params} />
+        </ErrorBoundary>
+    )
+}
+
+function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const { user, profile, loading: authLoading } = useAuth()
     const [task, setTask] = useState<TaskDetails | null>(null)
@@ -119,35 +128,43 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
     const loadTaskData = async () => {
         setLoading(true)
 
-        // PARALLEL LOADING: Load task and comments at the same time! 🚀
-        const [taskData, commentsData] = await Promise.all([
-            getTaskDetailsAction(id),
-            getTaskCommentsAction(id)
-        ])
+        try {
+            // PARALLEL LOADING: Load task and comments at the same time! 🚀
+            const [taskData, commentsData] = await Promise.all([
+                getTaskDetailsAction(id),
+                getTaskCommentsAction(id)
+            ])
 
-        setTask(taskData)
-        setComments(commentsData)
+            // RADICAL SANITIZATION 🛡️
+            if (taskData) {
+                // Ensure assignments is always an array
+                if (!Array.isArray(taskData.assignments)) {
+                    taskData.assignments = []
+                }
+                // Filter out any corrupt assignment objects
+                taskData.assignments = taskData.assignments.filter(a => a && typeof a === 'object' && a.id)
+            }
 
-        // Get task status from task data (fallback to 'open')
-        if (taskData) {
-            setTaskStatus(taskData.status || 'open')
+            const safeComments = Array.isArray(commentsData)
+                ? commentsData.filter(c => c && typeof c === 'object' && c.id)
+                : []
+
+            setTask(taskData)
+            setComments(safeComments)
+
+            // Get task status from task data (fallback to 'open')
+            if (taskData) {
+                setTaskStatus(taskData.status || 'open')
+            }
+        } catch (error) {
+            console.error('Error loading task data:', error)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     const loadTask = async () => {
-        setLoading(true)
-        const [taskData, commentsData] = await Promise.all([
-            getTaskDetailsAction(id),
-            getTaskCommentsAction(id)
-        ])
-        setTask(taskData)
-        setComments(commentsData)
-        // Get task status from task data (fallback to 'open')
-        if (taskData) {
-            setTaskStatus(taskData.status || 'open')
-        }
-        setLoading(false)
+        await loadTaskData()
     }
 
     const handleSendComment = async () => {
@@ -254,7 +271,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
         )
     }
 
-    const completedCount = task.assignments.filter(a => a.status === 'completed').length
+    const completedCount = (task.assignments || []).filter(a => a.status === 'completed').length
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex flex-col">
@@ -266,7 +283,10 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                     </Link>
-                    <h1 className="text-lg font-bold text-slate-900 dark:text-white flex-1">تفاصيل المهمة</h1>
+                    <h1 className="text-lg font-bold text-slate-900 dark:text-white flex-1">
+                        تفاصيل المهمة
+                        <span className="mr-2 text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">v2.0.1-fix</span>
+                    </h1>
 
                     {/* Status Badge */}
                     {taskStatus === 'open' ? (
@@ -332,12 +352,12 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                 <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-slate-900 dark:text-white">نسبة الإنجاز</h3>
-                        <span className="text-lg font-bold text-slate-900 dark:text-white">{completedCount}/{task.assignments.length}</span>
+                        <span className="text-lg font-bold text-slate-900 dark:text-white">{completedCount}/{(task.assignments || []).length}</span>
                     </div>
                     <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                            style={{ width: `${task.assignments.length > 0 ? (completedCount / task.assignments.length) * 100 : 0}%` }}
+                            style={{ width: `${(task.assignments || []).length > 0 ? (completedCount / (task.assignments || []).length) * 100 : 0}%` }}
                         />
                     </div>
                 </div>
@@ -345,7 +365,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                 {/* Assignments Table */}
                 <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 overflow-hidden shadow-sm">
                     <div className="p-4 border-b border-slate-200 dark:border-slate-700/50">
-                        <h3 className="font-semibold text-slate-900 dark:text-white">قائمة التوزيع ({task.assignments.length} موظف)</h3>
+                        <h3 className="font-semibold text-slate-900 dark:text-white">قائمة التوزيع ({(task.assignments || []).length} موظف)</h3>
                     </div>
 
                     <Table>
@@ -356,7 +376,7 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {task.assignments.map((assignment) => (
+                            {(task.assignments || []).map((assignment) => (
                                 <TableRow key={assignment.id} className="border-slate-200 dark:border-slate-700/50">
                                     <TableCell>
                                         <div className="flex items-center gap-3">
@@ -434,48 +454,48 @@ export default function TaskDetailsPage({ params }: { params: Promise<{ id: stri
                         <div ref={chatEndRef} />
                     </div>
                 </div>
-            </main>
 
-            {/* Fixed Input Area - Only show when task is open */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-700/50 p-4">
-                {taskStatus === 'completed' ? (
-                    // Read-only mode when task is completed
-                    <div className="flex items-center justify-center gap-3 py-2 text-slate-500 dark:text-slate-400">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                        <span className="text-sm">تم إغلاق هذه المهمة - المناقشة للقراءة فقط</span>
-                    </div>
-                ) : (
-                    // Active input when task is open
-                    <div className="flex gap-3">
-                        <input
-                            type="text"
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendComment()}
-                            placeholder="اكتب رداً..."
-                            className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <button
-                            onClick={handleSendComment}
-                            disabled={sending || !newComment.trim()}
-                            className="px-5 py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors flex items-center gap-2"
-                        >
-                            {sending ? (
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                                    </svg>
-                                    إرسال
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
-            </div>
+                {/* Fixed Input Area - Only show when task is open */}
+                <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-700/50 p-4">
+                    {taskStatus === 'completed' ? (
+                        // Read-only mode when task is completed
+                        <div className="flex items-center justify-center gap-3 py-2 text-slate-500 dark:text-slate-400">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                            <span className="text-sm">تم إغلاق هذه المهمة - المناقشة للقراءة فقط</span>
+                        </div>
+                    ) : (
+                        // Active input when task is open
+                        <div className="flex gap-3">
+                            <input
+                                type="text"
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendComment()}
+                                placeholder="اكتب رداً..."
+                                className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button
+                                onClick={handleSendComment}
+                                disabled={sending || !newComment.trim()}
+                                className="px-5 py-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors flex items-center gap-2"
+                            >
+                                {sending ? (
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                        </svg>
+                                        إرسال
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </main>
         </div>
     )
 }
