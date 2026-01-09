@@ -41,9 +41,15 @@ function EmployeeProfileContent({ params }: { params: Promise<{ id: string }> })
     const stats = basicData?.stats
 
     // RADICAL SANITIZATION 🛡️
-    const activeTasks = Array.isArray(tasksData?.activeTasks) ? tasksData.activeTasks : []
-    const completedTasks = Array.isArray(tasksData?.completedTasks) ? tasksData.completedTasks : []
-    const circulars = Array.isArray(circularsData) ? circularsData : []
+    // RADICAL SANITIZATION 🛡️
+    const activeTasks = (Array.isArray(tasksData?.activeTasks) ? tasksData.activeTasks : [])
+        .filter(t => t && typeof t === 'object' && t.id && t.task_title)
+
+    const completedTasks = (Array.isArray(tasksData?.completedTasks) ? tasksData.completedTasks : [])
+        .filter(t => t && typeof t === 'object' && t.id && t.task_title)
+
+    const circulars = (Array.isArray(circularsData) ? circularsData : [])
+        .filter(c => c && typeof c === 'object' && c.id)
 
     // Auth and permission check
     useEffect(() => {
@@ -76,7 +82,10 @@ function EmployeeProfileContent({ params }: { params: Promise<{ id: string }> })
     }
 
     const formatDateTime = (dateString: string) => {
+        if (!dateString) return ''
         const date = new Date(dateString)
+        if (isNaN(date.getTime())) return ''
+
         const day = date.getDate()
         const month = date.getMonth() + 1
         const year = date.getFullYear()
@@ -285,6 +294,8 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
     showCompleted?: boolean
 }) {
     const [expanded, setExpanded] = useState(false)
+
+    if (!task) return null
 
     // Safe comments check
     const comments = Array.isArray(task.comments) ? task.comments : []
