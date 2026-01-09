@@ -1,7 +1,8 @@
 
-import { getEmployeeProfileAction, getEmployeeTasksAction } from '@/lib/staff-actions'
+import { getEmployeeProfileAction, getEmployeeTasksAction, type EmployeeProfileData } from '@/lib/staff-actions'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { EmployeeProfileContent } from '@/components/dashboard/employee-profile-content'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -14,11 +15,11 @@ export default async function StaffProfilePage({ params }: Props) {
     const { id } = await params
 
     // Fetch initial data
-    // const profileData = await getEmployeeProfileAction(id)
+    const profileData = await getEmployeeProfileAction(id)
 
-    // if (!profileData) {
-    //     notFound()
-    // }
+    if (!profileData) {
+        notFound()
+    }
 
     // Get initial tasks
     // const tasksData = await getEmployeeTasksAction(id)
@@ -28,7 +29,18 @@ export default async function StaffProfilePage({ params }: Props) {
     //     ...tasksData
     // }
 
-    const initialData = { profile: { full_name: 'Debug User' } } as any
+    const initialData: EmployeeProfileData = {
+        profile: profileData.profile,
+        activeTasks: [],
+        completedTasks: [],
+        circulars: [],
+        stats: {
+            activeCount: 0,
+            completedCount: 0,
+            circularCount: 0,
+            unreadCircularCount: 0
+        }
+    }
 
     return (
         <div className="p-4 md:p-6 lg:p-8">
@@ -40,19 +52,16 @@ export default async function StaffProfilePage({ params }: Props) {
                     <svg className="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    <span>Debug User</span>
-                    <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700 border border-red-200">
-                        v3.2-SAFE-MODE
+                    <span>{initialData.profile.full_name}</span>
+                    <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
+                        v3.3-PROFILE-ONLY
                     </span>
                 </div>
 
-                <div className="p-8 border-2 border-dashed border-red-300 rounded-xl bg-red-50 text-center">
-                    <h2 className="text-xl font-bold text-red-800 mb-2">SAFE MODE DIAGNOSTIC</h2>
-                    <p className="text-red-600">
-                        Data fetching disabled. Loading.tsx disabled.
-                        If this page loads, the issue was in data fetching or loading.tsx.
-                    </p>
-                </div>
+                <EmployeeProfileContent
+                    initialData={initialData}
+                    employeeId={id}
+                />
             </div>
         </div>
     )
