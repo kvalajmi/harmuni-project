@@ -2,8 +2,6 @@
 import { getEmployeeProfileAction, getEmployeeTasksAction } from '@/lib/staff-actions'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ErrorBoundary } from '@/components/error-boundary'
-// import { EmployeeProfileContent } from '@/components/dashboard/employee-profile-content'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -22,10 +20,9 @@ export default async function StaffProfilePage({ params }: Props) {
         notFound()
     }
 
-    // Get initial tasks for server-side rendering
+    // Get initial tasks
     const tasksData = await getEmployeeTasksAction(id)
 
-    // Merge into initialData format
     const initialData = {
         ...profileData,
         ...tasksData
@@ -43,26 +40,17 @@ export default async function StaffProfilePage({ params }: Props) {
                     </svg>
                     <span>{initialData.profile.full_name}</span>
                     <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
-                        v3.1-ISOLATION
+                        v3.1-NO-BOUNDARY
                     </span>
                 </div>
 
-                <ErrorBoundary>
-                    {/* 
-                    <EmployeeProfileContent 
-                        initialData={initialData} 
-                        employeeId={id} 
-                    /> 
-                    */}
-                    <div className="p-8 border-4 border-blue-500 rounded-xl bg-blue-50 text-blue-900">
-                        <h1 className="text-3xl font-bold">🧪 SUPER ISOLATION TEST 🧪</h1>
-                        <p className="mt-4">If you see this, the Page/Server Actions are FINE.</p>
-                        <p>The crash is inside EmployeeProfileContent or its dependencies.</p>
-                        <div className="mt-4 p-4 bg-white rounded overflow-auto max-h-96 text-xs whitespace-pre-wrap font-mono">
-                            {JSON.stringify(initialData, null, 2)}
-                        </div>
+                <div className="p-8 border-4 border-green-500 rounded-xl bg-green-50 text-green-900">
+                    <h1 className="text-3xl font-bold">✅ NO ERROR BOUNDARY TEST ✅</h1>
+                    <p className="mt-4">If you see this, ErrorBoundary was the culprit!</p>
+                    <div className="mt-4 p-4 bg-white rounded overflow-auto max-h-96 text-xs whitespace-pre-wrap font-mono">
+                        {JSON.stringify(initialData, null, 2)}
                     </div>
-                </ErrorBoundary>
+                </div>
             </div>
         </div>
     )
