@@ -8,20 +8,21 @@ import { ar } from 'date-fns/locale'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { useEmployeeTasks, useEmployeeCirculars } from '@/lib/hooks'
-import { useToast } from '@/components/toast'
+// import { useEmployeeTasks, useEmployeeCirculars } from '@/lib/hooks'
+// import { useToast } from '@/components/toast'
 import { EmployeeProfileData } from '@/lib/staff-actions'
 
 export function EmployeeProfileContent({ initialData, employeeId }: { initialData: EmployeeProfileData, employeeId: string }) {
-    console.log('DEBUG: EmployeeProfileContent Render', { initialData }) // DEBUG
+    console.log('DEBUG: EmployeeProfileContent Render (MINIMAL)', { initialData }) // DEBUG
 
     const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'circulars'>('overview')
-    const { showToast } = useToast()
+    // const { showToast } = useToast()
 
-    // Use SWR for real-time updates
-    const {
-        data: tasksData,
-        isLoading: tasksLoading
+    // DISABLE HOOKS FOR DEBUGGING
+    /*
+    const { 
+        data: tasksData, 
+        isLoading: tasksLoading 
     } = useEmployeeTasks(employeeId, {
         fallbackData: {
             activeTasks: initialData.activeTasks || [],
@@ -29,19 +30,20 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
         }
     })
 
-    const {
-        data: circulars,
-        isLoading: circularsLoading
+    const { 
+        data: circulars, 
+        isLoading: circularsLoading 
     } = useEmployeeCirculars(employeeId, {
         fallbackData: initialData.circulars || []
     })
+    */
 
-    // Safe data access with debug logs
-    const activeTasks = Array.isArray(tasksData?.activeTasks) ? tasksData.activeTasks : []
-    const completedTasks = Array.isArray(tasksData?.completedTasks) ? tasksData.completedTasks : []
-    const safeCirculars = Array.isArray(circulars) ? circulars : []
+    // USE INITIAL DATA ONLY
+    const activeTasks = initialData.activeTasks || []
+    const completedTasks = initialData.completedTasks || []
+    const safeCirculars = initialData.circulars || []
 
-    console.log('DEBUG: Tasks Data', { activeTasks, completedTasks, raw: tasksData }) // DEBUG
+    // console.log('DEBUG: Tasks Data', { activeTasks, completedTasks, raw: tasksData }) // DEBUG
 
     // Calculate stats
     const stats = {
@@ -78,11 +80,12 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     const handleMarkCompleted = async (assignmentId: string) => {
         try {
             await markAssignmentCompletedAction(assignmentId)
-            showToast('تم تحديث حالة المهمة بنجاح', 'success')
-            // mutate will automatically update the UI via SWR
+            // showToast('تم تحديث حالة المهمة بنجاح', 'success')
+            alert('تم تحديث حالة المهمة بنجاح (MINIMAL MODE)')
         } catch (error) {
             console.error('Error updating task:', error)
-            showToast('حدث خطأ أثناء تحديث حالة المهمة', 'error')
+            // showToast('حدث خطأ أثناء تحديث حالة المهمة', 'error')
+            alert('Error updating task')
         }
     }
 
@@ -92,7 +95,11 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     )
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 border-4 border-red-500 p-4 rounded-xl">
+            <h1 className="text-2xl font-bold text-red-600 bg-red-100 p-2 text-center rounded">
+                ⚠️ MINIMAL DEBUG MODE (No Hooks)
+            </h1>
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="p-4">
                     <div className="flex items-center gap-2">
