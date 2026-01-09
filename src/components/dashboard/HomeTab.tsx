@@ -19,12 +19,16 @@ const HomeTab = memo(function HomeTab({
 }) {
     const [filter, setFilter] = useState<EmployeeFilter>('all')
 
+    // Safe access to employees
+    const safeEmployees = Array.isArray(employees) ? employees : []
+
     // Filter employees (exclude admins)
-    const staffEmployees = employees.filter(emp => emp.role !== 'admin')
-    const totalActive = staffEmployees.reduce((sum, e) => sum + e.stats.activeTasks, 0)
-    const totalCompleted = staffEmployees.reduce((sum, e) => sum + e.stats.completedTasks, 0)
+    const staffEmployees = safeEmployees.filter(emp => emp.role !== 'admin')
+    const totalActive = staffEmployees.reduce((sum, e) => sum + (e.stats?.activeTasks || 0), 0)
+    const totalCompleted = staffEmployees.reduce((sum, e) => sum + (e.stats?.completedTasks || 0), 0)
 
     const filteredEmployees = staffEmployees.filter(emp => {
+        if (!emp || !emp.stats) return false
         switch (filter) {
             case 'has_active':
                 return emp.stats.activeTasks > 0
@@ -108,31 +112,28 @@ const HomeTab = memo(function HomeTab({
                     <div className="flex gap-2 overflow-x-auto pb-2">
                         <button
                             onClick={() => setFilter('all')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                                filter === 'all'
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
                                     ? 'bg-blue-500 text-white'
                                     : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                            }`}
+                                }`}
                         >
                             الكل ({staffEmployees.length})
                         </button>
                         <button
                             onClick={() => setFilter('has_active')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                                filter === 'has_active'
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
                                     ? 'bg-amber-500 text-white'
                                     : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                            }`}
+                                }`}
                         >
                             لديهم نشط ({staffEmployees.filter(e => e.stats.activeTasks > 0).length})
                         </button>
                         <button
                             onClick={() => setFilter('no_tasks')}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                                filter === 'no_tasks'
+                            className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'no_tasks'
                                     ? 'bg-slate-500 text-white'
                                     : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                            }`}
+                                }`}
                         >
                             بدون مهام ({staffEmployees.filter(e => e.stats.totalTasks === 0).length})
                         </button>

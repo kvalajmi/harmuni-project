@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { use } from 'react'
 import { mutate } from 'swr'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
@@ -12,10 +11,19 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { updateTaskStatusAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
 import { useEmployeeProfileBasic, useEmployeeTasks, useEmployeeCirculars, mutationKeys } from '@/lib/hooks'
+import { ErrorBoundary } from '@/components/error-boundary'
 
 type TabType = 'active' | 'completed' | 'circulars'
 
 export default function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
+    return (
+        <ErrorBoundary>
+            <EmployeeProfileContent params={params} />
+        </ErrorBoundary>
+    )
+}
+
+function EmployeeProfileContent({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const { user, profile: currentUserProfile, loading: authLoading } = useAuth()
     const [activeTab, setActiveTab] = useState<TabType>('active')
@@ -31,9 +39,11 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
     const loading = authLoading || basicLoading
     const employeeProfile = basicData?.profile
     const stats = basicData?.stats
-    const activeTasks = tasksData?.activeTasks || []
-    const completedTasks = tasksData?.completedTasks || []
-    const circulars = circularsData || []
+
+    // RADICAL SANITIZATION 🛡️
+    const activeTasks = Array.isArray(tasksData?.activeTasks) ? tasksData.activeTasks : []
+    const completedTasks = Array.isArray(tasksData?.completedTasks) ? tasksData.completedTasks : []
+    const circulars = Array.isArray(circularsData) ? circularsData : []
 
     // Auth and permission check
     useEffect(() => {
@@ -150,7 +160,7 @@ export default function EmployeeProfilePage({ params }: { params: Promise<{ id: 
                                     className={employeeProfile.role === 'admin' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' : 'bg-slate-100 dark:bg-slate-600/50 text-slate-700 dark:text-slate-300'}>
                                     {employeeProfile.role === 'admin' ? 'مدير' : 'موظف'}
                                 </Badge>
-                                {employeeProfile.groups.map(g => (
+                                {(employeeProfile.groups || []).map(g => (
                                     <Badge key={g.id} variant="outline" className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300">
                                         {g.name}
                                     </Badge>
@@ -276,6 +286,9 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
 }) {
     const [expanded, setExpanded] = useState(false)
 
+    // Safe comments check
+    const comments = Array.isArray(task.comments) ? task.comments : []
+
     return (
         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -338,7 +351,7 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
             </div>
 
             {/* Comments */}
-            {task.comments.length > 0 && (
+            {comments.length > 0 && (
                 <div className="mt-3">
                     <button
                         onClick={() => setExpanded(!expanded)}
@@ -347,12 +360,12 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                         <svg className={`w-4 h-4 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
-                        {task.comments.length} تعليق
+                        {comments.length} تعليق
                     </button>
 
                     {expanded && (
                         <div className="mt-2 space-y-2 border-r-2 border-slate-200 dark:border-slate-700 pr-3 mr-2">
-                            {task.comments.map(comment => (
+                            {comments.map(comment => (
                                 <div key={comment.id} className="bg-slate-100 dark:bg-slate-700/30 rounded-lg p-3">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-sm font-medium text-slate-900 dark:text-white">{comment.user_name}</span>
