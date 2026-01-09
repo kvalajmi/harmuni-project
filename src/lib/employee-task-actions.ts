@@ -147,8 +147,8 @@ export async function createEmployeeTaskAction(
 // Get tasks for a specific user (created by them or assigned to them)
 export async function getUserEmployeeTasksAction(userId: string): Promise<EmployeeTask[]> {
     try {
-        // Get tasks with creator and assignment info
-        const { data: tasks, error } = await supabaseAdmin
+        // Get tasks created by user
+        const { data: createdTasks } = await supabaseAdmin
             .from('employee_tasks')
             .select(`
                 *,
@@ -156,16 +156,31 @@ export async function getUserEmployeeTasksAction(userId: string): Promise<Employ
                 employee_task_assignments(user_id, status, updated_at, user:profiles(full_name)),
                 employee_task_comments(count)
             `)
-            .or(`created_by.eq.${userId},employee_task_assignments.user_id.eq.${userId}`)
+            .eq('created_by', userId)
             .order('created_at', { ascending: false })
-            .limit(100)
 
-        if (error) {
-            console.error('Get user employee tasks error:', error)
-            return []
-        }
+        // Get tasks assigned to user
+        const { data: assignedTasks } = await supabaseAdmin
+            .from('employee_tasks')
+            .select(`
+                *,
+                creator:profiles!employee_tasks_created_by_fkey(full_name, role),
+                employee_task_assignments!inner(user_id, status, updated_at, user:profiles(full_name)),
+                employee_task_comments(count)
+            `)
+            .eq('employee_task_assignments.user_id', userId)
+            .neq('created_by', userId) // Exclude tasks already in createdTasks
+            .order('created_at', { ascending: false })
 
-        return (tasks || []).map(task => ({
+        // Combine and format tasks
+        const allTasks = [...(createdTasks || []), ...(assignedTasks || [])]
+
+        // Sort by created_at and limit to 100
+        const sortedTasks = allTasks
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 100)
+
+        return sortedTasks.map(task => ({
             ...task,
             assignments: task.employee_task_assignments?.map((a: any) => ({
                 user_id: a.user_id,
