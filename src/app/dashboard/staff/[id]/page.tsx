@@ -56,7 +56,7 @@ export default async function StaffProfilePage({ params }: Props) {
                     </svg>
                     <span>{initialData.profile.full_name}</span>
                     <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 border border-purple-200">
-                        v3.4-FULL_DATA
+                        v3.5-RESTORED-LOADING
                     </span>
                 </div>
 
