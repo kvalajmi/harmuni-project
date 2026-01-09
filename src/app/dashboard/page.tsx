@@ -58,8 +58,13 @@ const ProfileTab = dynamic(() => import('@/components/dashboard/ProfileTab'), {
     ssr: false
 })
 
+const EmployeeTasksTab = dynamic(() => import('@/components/dashboard/EmployeeTasksTab'), {
+    loading: () => <TasksListSkeleton />,
+    ssr: false
+})
+
 // Tab types
-type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'profile'
+type TabType = 'home' | 'tasks' | 'circulars' | 'notifications' | 'profile' | 'employee-tasks'
 
 // Staff circular type with read status
 interface StaffCircular extends Circular {
@@ -90,7 +95,7 @@ export default function DashboardPage() {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search)
             const tabFromUrl = params.get('tab') as TabType | null
-            if (tabFromUrl && ['home', 'tasks', 'circulars', 'notifications', 'profile'].includes(tabFromUrl)) {
+            if (tabFromUrl && ['home', 'tasks', 'circulars', 'notifications', 'profile', 'employee-tasks'].includes(tabFromUrl)) {
                 setActiveTab(tabFromUrl)
             }
         }
@@ -207,6 +212,8 @@ export default function DashboardPage() {
                 return <CircularsListSkeleton count={3} />
             case 'notifications':
                 return <NotificationsListSkeleton count={5} />
+            case 'employee-tasks':
+                return <TasksListSkeleton count={4} />
             default:
                 return <HomeTabSkeleton />
         }
@@ -405,6 +412,9 @@ export default function DashboardPage() {
                         {activeTab === 'profile' && (
                             <ProfileTab user={user} profile={profile} onSignOut={handleSignOut} />
                         )}
+                        {activeTab === 'employee-tasks' && (
+                            <EmployeeTasksTab />
+                        )}
                     </>
                 )}
             </main>
@@ -432,19 +442,12 @@ export default function DashboardPage() {
                         onClick={() => handleTabChange('circulars')}
                         badge={unreadCirculars > 0 ? unreadCirculars : undefined}
                     />
-                    <Link
-                        href="/dashboard/employee-tasks"
-                        className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl transition-all hover:bg-slate-100 dark:hover:bg-slate-700/50"
-                    >
-                        <div className="w-6 h-6 text-slate-500 dark:text-slate-400">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                        </div>
-                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            مهام الموظفين
-                        </span>
-                    </Link>
+                    <NavItem
+                        icon={<EmployeesIcon />}
+                        label="مهام الموظفين"
+                        active={activeTab === 'employee-tasks'}
+                        onClick={() => handleTabChange('employee-tasks')}
+                    />
                     <NavItem
                         icon={<ProfileIcon />}
                         label="حسابي"
