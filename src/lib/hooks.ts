@@ -127,19 +127,20 @@ export function useEmployeeProfileBasic(employeeId: string | null) {
 }
 
 // Separate hooks for lazy loading tasks and circulars
-export function useEmployeeTasks(employeeId: string | null) {
+// Separate hooks for lazy loading tasks and circulars
+export function useEmployeeTasks(employeeId: string | null, options?: any) {
     return useSWR<{ activeTasks: EmployeeTask[], completedTasks: EmployeeTask[] }>(
         employeeId ? ['employee-tasks', employeeId] : null,
         () => getEmployeeTasksAction(employeeId!),
-        swrConfig
+        { ...swrConfig, ...options }
     )
 }
 
-export function useEmployeeCirculars(employeeId: string | null) {
+export function useEmployeeCirculars(employeeId: string | null, options?: any) {
     return useSWR<EmployeeCircular[]>(
         employeeId ? ['employee-circulars', employeeId] : null,
         () => getEmployeeCircularsAction(employeeId!),
-        swrConfig
+        { ...swrConfig, ...options }
     )
 }
 

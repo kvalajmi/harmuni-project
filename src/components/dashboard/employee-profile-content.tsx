@@ -8,7 +8,7 @@ import { ar } from 'date-fns/locale'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-// import { useEmployeeTasks, useEmployeeCirculars } from '@/lib/hooks'
+import { useEmployeeTasks, useEmployeeCirculars } from '@/lib/hooks'
 // import { useToast } from '@/components/toast'
 import { EmployeeProfileData } from '@/lib/staff-actions'
 
@@ -18,38 +18,37 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'circulars'>('overview')
     // const { showToast } = useToast()
 
-    // DISABLE HOOKS FOR DEBUGGING
-    /*
-    const { 
-        data: tasksData, 
-        isLoading: tasksLoading 
+    // RE-ENABLED HOOKS WITH DEFENSIVE CHECKS
+    // Default values are critical here to prevent "undefined" crashes
+    const {
+        data: tasksData = { activeTasks: [], completedTasks: [] },
+        isLoading: tasksLoading
     } = useEmployeeTasks(employeeId, {
         fallbackData: {
             activeTasks: initialData.activeTasks || [],
             completedTasks: initialData.completedTasks || []
-        }
+        },
+        revalidateOnFocus: false
     })
 
-    const { 
-        data: circulars, 
-        isLoading: circularsLoading 
+    const {
+        data: circulars = [],
+        isLoading: circularsLoading
     } = useEmployeeCirculars(employeeId, {
-        fallbackData: initialData.circulars || []
+        fallbackData: initialData.circulars || [],
+        revalidateOnFocus: false
     })
-    */
 
-    // USE INITIAL DATA ONLY
-    const activeTasks = initialData.activeTasks || []
-    const completedTasks = initialData.completedTasks || []
-    const safeCirculars = initialData.circulars || []
-
-    // console.log('DEBUG: Tasks Data', { activeTasks, completedTasks, raw: tasksData }) // DEBUG
+    // Safely extract arrays (even if hook returns null/undefined despite fallback)
+    const activeTasks = tasksData?.activeTasks || []
+    const completedTasks = tasksData?.completedTasks || []
+    const safeCirculars = circulars || []
 
     // Calculate stats
     const stats = {
-        activeCount: activeTasks.length,
-        completedCount: completedTasks.length,
-        circularCount: safeCirculars.length,
+        activeCount: activeTasks.length, // Safe access
+        completedCount: completedTasks.length, // Safe access
+        circularCount: safeCirculars.length, // Safe access
         unreadCircularCount: safeCirculars.filter((c: any) => !c.is_read).length
     }
 
@@ -80,12 +79,10 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     const handleMarkCompleted = async (assignmentId: string) => {
         try {
             await markAssignmentCompletedAction(assignmentId)
-            // showToast('تم تحديث حالة المهمة بنجاح', 'success')
-            alert('تم تحديث حالة المهمة بنجاح (MINIMAL MODE)')
+            alert('تم قبول المهمة وإكمالها بنجاح')
         } catch (error) {
             console.error('Error updating task:', error)
-            // showToast('حدث خطأ أثناء تحديث حالة المهمة', 'error')
-            alert('Error updating task')
+            alert('حدث خطأ أثناء تحديث حالة المهمة')
         }
     }
 
@@ -95,10 +92,15 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     )
 
     return (
-        <div className="space-y-6 border-4 border-red-500 p-4 rounded-xl">
-            <h1 className="text-2xl font-bold text-red-600 bg-red-100 p-2 text-center rounded">
-                ⚠️ MINIMAL DEBUG MODE (No Hooks)
-            </h1>
+        <div className="space-y-6">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800 flex items-center justify-between">
+                <span>
+                    <strong>v3.4-FIXED-HOOKS:</strong> Data fetching restored with safe checks.
+                </span>
+                <span className="text-xs bg-white px-2 py-1 rounded border border-green-200">
+                    Tasks: {activeTasks.length}, Circulars: {safeCirculars.length}
+                </span>
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="p-4">
@@ -164,8 +166,8 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
                     <button
                         onClick={() => setActiveTab('overview')}
                         className={`py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'overview'
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         نظرة عامة
@@ -173,8 +175,8 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
                     <button
                         onClick={() => setActiveTab('tasks')}
                         className={`py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'tasks'
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         المهام ({stats.activeCount})
@@ -182,8 +184,8 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
                     <button
                         onClick={() => setActiveTab('circulars')}
                         className={`py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'circulars'
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                             }`}
                     >
                         التعاميم ({stats.unreadCircularCount})
