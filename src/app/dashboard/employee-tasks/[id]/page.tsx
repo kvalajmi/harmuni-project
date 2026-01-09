@@ -30,7 +30,7 @@ export default function EmployeeTaskDetailsPage() {
     const [sendingComment, setSendingComment] = useState(false)
 
     const isAdmin = profile?.role === 'admin'
-    const userAssignment = assignments.find(a => a.user_id === user?.id)
+    const userAssignment = (assignments || []).find(a => a.user_id === user?.id)
     const isCreator = task?.created_by === user?.id
     const canClose = !task?.is_closed && (isCreator || isAdmin)
 
