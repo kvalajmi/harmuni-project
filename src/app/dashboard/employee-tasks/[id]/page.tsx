@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useState, useEffect, use } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import {
@@ -16,11 +16,10 @@ import {
 import { formatDistanceToNow, format } from 'date-fns'
 import { ar } from 'date-fns/locale'
 
-export default function EmployeeTaskDetailsPage() {
+export default function EmployeeTaskDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id: taskId } = use(params)
     const { user, profile } = useAuth()
     const router = useRouter()
-    const params = useParams()
-    const taskId = params.id as string
 
     const [task, setTask] = useState<EmployeeTask | null>(null)
     const [assignments, setAssignments] = useState<EmployeeTaskAssignment[]>([])
