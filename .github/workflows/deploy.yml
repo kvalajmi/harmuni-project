@@ -41,3 +41,20 @@ jobs:
 
       - name: Image digest
         run: echo "Image pushed successfully!"
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to DigitalOcean
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            cd /app
+            docker compose pull
+            docker compose down
+            docker compose up -d
+            docker system prune -f
