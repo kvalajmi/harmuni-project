@@ -1,12 +1,11 @@
 'use client'
 
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 // Singleton instance to prevent multiple client creations
-let browserClient: ReturnType<typeof createBrowserClient> | null = null
+let browserClient: SupabaseClient | null = null
 
 // Create a Supabase client for browser/client components
-// This properly handles cookies and auth sessions in Next.js App Router
 export function createSupabaseBrowser() {
     // Return existing client if already created
     if (browserClient) {
@@ -30,23 +29,18 @@ export function createSupabaseBrowser() {
         })
     }
 
-    // This creates a client that properly handles cookies and auth
-    browserClient = createBrowserClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        {
-            auth: {
-                // Disable lock to prevent "this.lock is not a function" error
-                // caused by some browsers/extensions or PWA context
-                lock: {
-                    acquire: () => Promise.resolve(() => Promise.resolve()),
-                    release: () => Promise.resolve()
-                } as any,
-                persistSession: true,
-                autoRefreshToken: true,
-            }
+    // Use createClient directly with lock disabled to fix "this.lock is not a function" error
+    browserClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            // Disable Web Locks API to prevent errors in PWA/some browsers
+            lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
+                return await fn()
+            },
         }
-    )
+    })
 
     return browserClient
 }
