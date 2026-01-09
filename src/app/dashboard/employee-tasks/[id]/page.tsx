@@ -16,8 +16,19 @@ import {
 import { formatDistanceToNow, format } from 'date-fns'
 import { ar } from 'date-fns/locale'
 
+import { ErrorBoundary } from '@/components/error-boundary'
+
 export default function EmployeeTaskDetailsPage() {
+    return (
+        <ErrorBoundary>
+            <EmployeeTaskDetailsContent />
+        </ErrorBoundary>
+    )
+}
+
+function EmployeeTaskDetailsContent() {
     const params = useParams()
+    // ... (rest of the code moved here)
     const taskId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : ''
     const { user, profile, loading: authLoading } = useAuth()
     const router = useRouter()
@@ -29,9 +40,12 @@ export default function EmployeeTaskDetailsPage() {
     const [newComment, setNewComment] = useState('')
     const [sendingComment, setSendingComment] = useState(false)
 
-    // Safe derived state for render
-    const safeAssignments = Array.isArray(assignments) ? assignments : []
-    const safeComments = Array.isArray(comments) ? comments : []
+    // Safe derived state for render with radical filtering
+    const safeAssignments = (Array.isArray(assignments) ? assignments : [])
+        .filter(a => a && typeof a === 'object' && a.id && a.user_id)
+
+    const safeComments = (Array.isArray(comments) ? comments : [])
+        .filter(c => c && typeof c === 'object' && c.id)
 
     const isAdmin = profile?.role === 'admin'
     const userAssignment = safeAssignments.find(a => a.user_id === user?.id)
