@@ -18,8 +18,8 @@ import { ar } from 'date-fns/locale'
 
 export default function EmployeeTaskDetailsPage() {
     const params = useParams()
-    const taskId = params.id as string
-    const { user, profile } = useAuth()
+    const taskId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : ''
+    const { user, profile, loading: authLoading } = useAuth()
     const router = useRouter()
 
     const [task, setTask] = useState<EmployeeTask | null>(null)
@@ -35,10 +35,10 @@ export default function EmployeeTaskDetailsPage() {
     const canClose = !task?.is_closed && (isCreator || isAdmin)
 
     useEffect(() => {
-        if (taskId) {
+        if (taskId && !authLoading) {
             loadTaskDetails()
         }
-    }, [taskId])
+    }, [taskId, authLoading])
 
     const loadTaskDetails = async () => {
         setLoading(true)
