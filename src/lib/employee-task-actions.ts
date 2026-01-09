@@ -154,10 +154,11 @@ export async function getUserEmployeeTasksAction(userId: string): Promise<Employ
                 *,
                 creator:profiles!employee_tasks_created_by_fkey(full_name, role),
                 employee_task_assignments!inner(user_id, status, updated_at, user:profiles(full_name)),
-                employee_task_comments(id)
+                employee_task_comments(count)
             `)
             .or(`created_by.eq.${userId},employee_task_assignments.user_id.eq.${userId}`)
             .order('created_at', { ascending: false })
+            .limit(100)
 
         if (error) {
             console.error('Get user employee tasks error:', error)
@@ -172,7 +173,7 @@ export async function getUserEmployeeTasksAction(userId: string): Promise<Employ
                 status: a.status,
                 updated_at: a.updated_at
             })),
-            comment_count: task.employee_task_comments?.length || 0
+            comment_count: task.employee_task_comments?.[0]?.count || 0
         }))
     } catch (error) {
         console.error('Get user employee tasks exception:', error)
@@ -189,10 +190,10 @@ export async function getAllEmployeeTasksAction(): Promise<EmployeeTask[]> {
                 *,
                 creator:profiles!employee_tasks_created_by_fkey(full_name, role),
                 employee_task_assignments(user_id, status, updated_at, user:profiles(full_name)),
-                employee_task_comments(id),
-                employee_task_activities(created_at)
+                employee_task_comments(count)
             `)
             .order('created_at', { ascending: false })
+            .limit(100)
 
         if (error) {
             console.error('Get all employee tasks error:', error)
@@ -207,8 +208,7 @@ export async function getAllEmployeeTasksAction(): Promise<EmployeeTask[]> {
                 status: a.status,
                 updated_at: a.updated_at
             })),
-            comment_count: task.employee_task_comments?.length || 0,
-            last_activity: task.employee_task_activities?.[0]?.created_at
+            comment_count: task.employee_task_comments?.[0]?.count || 0
         }))
     } catch (error) {
         console.error('Get all employee tasks exception:', error)
