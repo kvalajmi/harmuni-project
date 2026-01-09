@@ -837,12 +837,16 @@ export async function getEmployeeTasksAction(employeeId: string): Promise<{ acti
                 status: a.status,
                 assigned_at: a.assigned_at,
                 updated_at: a.updated_at,
+                completed_at: a.status === 'completed' ? a.updated_at : null,
                 reminder_sent_at: a.reminder_sent_at,
                 response_note: a.response_note,
-                last_comment: taskComments.length > 0 ? taskComments[taskComments.length - 1].content : null,
-                last_comment_by: taskComments.length > 0 ? commenterMap.get(taskComments[taskComments.length - 1].user_id)?.name || 'Unknown' : null,
-                last_comment_by_role: taskComments.length > 0 ? commenterMap.get(taskComments[taskComments.length - 1].user_id)?.role || null : null,
-                comment_count: taskComments.length
+                comments: taskComments.map(c => ({
+                    id: c.id,
+                    content: c.content,
+                    user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
+                    user_role: commenterMap.get(c.user_id)?.role || 'member',
+                    created_at: c.created_at
+                }))
             }
 
             if (a.status === 'completed' || a.status === 'rejected') {

@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { updateTaskStatusAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
+import { markAssignmentCompletedAction, sendTaskReminderAction, EmployeeTask, EmployeeCircular } from '@/lib/staff-actions'
 import { useEmployeeProfileBasic, useEmployeeTasks, useEmployeeCirculars, mutationKeys } from '@/lib/hooks'
 import { ErrorBoundary } from '@/components/error-boundary'
 
@@ -74,8 +74,8 @@ function EmployeeProfileContent({ params }: { params: Promise<{ id: string }> })
         }
     }, [mutateBasic, mutateTasks, mutateCirculars, activeTab])
 
-    const handleMarkCompleted = async (taskId: string) => {
-        const result = await updateTaskStatusAction(taskId, 'completed')
+    const handleMarkCompleted = async (assignmentId: string) => {
+        const result = await markAssignmentCompletedAction(assignmentId)
         if (result.success) {
             loadData()
         }
@@ -315,7 +315,7 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
                     {!showCompleted && onMarkCompleted && task.status !== 'completed' && (
                         <Button
                             size="sm"
-                            onClick={() => onMarkCompleted(task.task_id)}
+                            onClick={() => onMarkCompleted(task.id)}
                             className="bg-green-500 hover:bg-green-600 text-white"
                         >
                             <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
