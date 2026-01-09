@@ -215,6 +215,7 @@ function EmployeeTaskDetailsContent() {
                             </Link>
                             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                                 تفاصيل المهمة
+                                <span className="mr-2 text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">v2.0.1-fix</span>
                             </h1>
                         </div>
                         {canClose && (
