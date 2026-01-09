@@ -29,8 +29,12 @@ export default function EmployeeTaskDetailsPage() {
     const [newComment, setNewComment] = useState('')
     const [sendingComment, setSendingComment] = useState(false)
 
+    // Safe derived state for render
+    const safeAssignments = Array.isArray(assignments) ? assignments : []
+    const safeComments = Array.isArray(comments) ? comments : []
+
     const isAdmin = profile?.role === 'admin'
-    const userAssignment = (assignments || []).find(a => a.user_id === user?.id)
+    const userAssignment = safeAssignments.find(a => a.user_id === user?.id)
     const isCreator = task?.created_by === user?.id
     const canClose = !task?.is_closed && (isCreator || isAdmin)
 
@@ -43,11 +47,23 @@ export default function EmployeeTaskDetailsPage() {
     const loadTaskDetails = async () => {
         setLoading(true)
         try {
+            console.log('[DEBUG] Loading task details for:', taskId)
             const data = await getEmployeeTaskDetailsAction(taskId)
+            console.log('[DEBUG] Task data received:', data)
+
             if (data) {
                 setTask(data.task)
-                setAssignments(data.assignments || [])
-                setComments(data.comments || [])
+                // Strict array checks
+                const safeAssignments = Array.isArray(data.assignments) ? data.assignments : []
+                const safeComments = Array.isArray(data.comments) ? data.comments : []
+
+                console.log('[DEBUG] Safe data:', {
+                    assignmentsCount: safeAssignments.length,
+                    commentsCount: safeComments.length
+                })
+
+                setAssignments(safeAssignments)
+                setComments(safeComments)
             }
         } catch (error) {
             console.error('Error loading task details:', error)
@@ -106,7 +122,7 @@ export default function EmployeeTaskDetailsPage() {
     }
 
     const getStatusColor = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
             case 'in_progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
             case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
@@ -115,7 +131,7 @@ export default function EmployeeTaskDetailsPage() {
     }
 
     const getStatusLabel = (status: string) => {
-        switch(status) {
+        switch (status) {
             case 'pending': return 'قيد الانتظار'
             case 'in_progress': return 'قيد التنفيذ'
             case 'completed': return 'مكتملة'
@@ -124,7 +140,7 @@ export default function EmployeeTaskDetailsPage() {
     }
 
     const getPriorityColor = (priority: string) => {
-        switch(priority) {
+        switch (priority) {
             case 'urgent': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
             case 'high': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
             case 'normal': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
@@ -134,7 +150,7 @@ export default function EmployeeTaskDetailsPage() {
     }
 
     const getPriorityLabel = (priority: string) => {
-        switch(priority) {
+        switch (priority) {
             case 'urgent': return 'عاجل'
             case 'high': return 'مهم'
             case 'normal': return 'عادي'
@@ -267,7 +283,7 @@ export default function EmployeeTaskDetailsPage() {
                         الموظفون المعينون
                     </h3>
                     <div className="space-y-3">
-                        {(assignments || []).map(assignment => (
+                        {safeAssignments.map(assignment => (
                             <div key={assignment.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">
@@ -310,17 +326,17 @@ export default function EmployeeTaskDetailsPage() {
                 {/* Comments */}
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-                        التعليقات ({(comments || []).length})
+                        التعليقات ({safeComments.length})
                     </h3>
 
                     {/* Comments List */}
                     <div className="space-y-4 mb-6 max-h-96 overflow-y-auto">
-                        {(comments || []).length === 0 ? (
+                        {safeComments.length === 0 ? (
                             <p className="text-center text-slate-500 dark:text-slate-400 py-8">
                                 لا توجد تعليقات بعد
                             </p>
                         ) : (
-                            (comments || []).map(comment => (
+                            safeComments.map(comment => (
                                 <div key={comment.id} className="flex gap-3">
                                     <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
                                         {comment.user?.full_name?.charAt(0) || '؟'}
