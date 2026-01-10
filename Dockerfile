@@ -24,21 +24,21 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG SUPABASE_SERVICE_KEY
 
-# Set them as ENV variables for the build process
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
-ENV SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
-
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# If using npm comment out above and use below instead
-RUN npm run build
+# Build with sanitized environment variables (removes leading/trailing whitespace)
+# This fixes the issue where GitHub secrets may contain accidental whitespace
+# xargs without arguments trims leading/trailing spaces
+RUN NEXT_PUBLIC_SUPABASE_URL="$(echo $NEXT_PUBLIC_SUPABASE_URL | xargs)" \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY="$(echo $NEXT_PUBLIC_SUPABASE_ANON_KEY | xargs)" \
+    SUPABASE_SERVICE_KEY="$(echo $SUPABASE_SERVICE_KEY | xargs)" \
+    npm run build
 
 # Production image, copy all the files and run next
 FROM node:20-alpine AS runner
