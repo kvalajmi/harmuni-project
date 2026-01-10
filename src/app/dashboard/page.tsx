@@ -189,8 +189,8 @@ export default function DashboardPage() {
         }
     }, [userId, isAdmin])
 
-    // Loading state
-    const loading = authLoading || (!profile && !user)
+    // Loading state - Wait for BOTH auth AND profile
+    const loading = authLoading || (user && !profile)
 
     const handleSignOut = async () => {
         const supabase = createSupabaseBrowser()
