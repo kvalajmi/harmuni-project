@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { markAssignmentCompletedAction } from '@/lib/staff-actions'
+import { markAssignmentCompletedAction, markAssignmentInProgressAction } from '@/lib/staff-actions'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { ar } from 'date-fns/locale'
@@ -78,10 +78,20 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     const handleMarkCompleted = async (assignmentId: string) => {
         try {
             await markAssignmentCompletedAction(assignmentId)
-            alert('تم قبول المهمة وإكمالها بنجاح')
+            alert('تم إكمال المهمة بنجاح')
         } catch (error) {
             console.error('Error updating task:', error)
             alert('حدث خطأ أثناء تحديث حالة المهمة')
+        }
+    }
+
+    const handleMarkInProgress = async (assignmentId: string) => {
+        try {
+            await markAssignmentInProgressAction(assignmentId)
+            alert('تم قبول المهمة وجاري العمل عليها')
+        } catch (error) {
+            console.error('Error updating task:', error)
+            alert('حدث خطأ أثناء قبول المهمة')
         }
     }
 
@@ -201,6 +211,7 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
                                             key={task.id}
                                             task={task}
                                             onMarkCompleted={handleMarkCompleted}
+                                            onMarkInProgress={handleMarkInProgress}
                                             formatDateTime={formatDateTime}
                                             getStatusBadge={getStatusBadge}
                                         />
@@ -224,6 +235,7 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
                                     key={task.id}
                                     task={task}
                                     onMarkCompleted={handleMarkCompleted}
+                                    onMarkInProgress={handleMarkInProgress}
                                     formatDateTime={formatDateTime}
                                     getStatusBadge={getStatusBadge}
                                     showCompleted={true}
@@ -248,7 +260,7 @@ export function EmployeeProfileContent({ initialData, employeeId }: { initialDat
     )
 }
 
-function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showCompleted = false }: any) {
+function TaskCard({ task, onMarkCompleted, onMarkInProgress, formatDateTime, getStatusBadge, showCompleted = false }: any) {
     // DEBUG LOG
     console.log('DEBUG: TaskCard Render', { task })
 
@@ -264,24 +276,46 @@ function TaskCard({ task, onMarkCompleted, formatDateTime, getStatusBadge, showC
         <div className="bg-white/80 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700/50 p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                        {getStatusBadge(task.status)}
+                    </div>
                     <h3 className="font-semibold text-slate-900 dark:text-white">{task.task_title}</h3>
                     {task.task_description && (
                         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">{task.task_description}</p>
                     )}
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                    {getStatusBadge(task.status)}
-                    {!showCompleted && onMarkCompleted && task.status !== 'completed' && (
-                        <Button
-                            size="sm"
-                            onClick={() => onMarkCompleted(task.id)} // id is assignment_id
-                            className="bg-green-500 hover:bg-green-600 text-white"
-                        >
-                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            قبول وإكمال
-                        </Button>
+                    {/* Action Buttons */}
+                    {!showCompleted && task.status !== 'completed' && (
+                        <div className="flex flex-col gap-2">
+                            {/* ACCEPT BUTTON: Only if Pending */}
+                            {task.status === 'pending' && onMarkInProgress && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => onMarkInProgress(task.id)} // id is assignment_id
+                                    className="bg-blue-500 hover:bg-blue-600 text-white shadow-sm"
+                                >
+                                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    قبول المهمة
+                                </Button>
+                            )}
+
+                            {/* COMPLETE BUTTON: Only if In Progress */}
+                            {task.status === 'in_progress' && onMarkCompleted && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => onMarkCompleted(task.id)} // id is assignment_id
+                                    className="bg-green-500 hover:bg-green-600 text-white shadow-sm"
+                                >
+                                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    إكمال المهمة
+                                </Button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

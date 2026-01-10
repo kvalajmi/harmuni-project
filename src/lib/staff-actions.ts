@@ -588,11 +588,54 @@ export async function updateTaskStatusAction(taskId: string, status: 'open' | 'c
             .update({ status })
             .eq('id', taskId)
 
+        // CRITICAL FIX: If task is completed, mark ALL assignments as completed
+        if (status === 'completed') {
+            await supabaseAdmin
+                .from('task_assignments')
+                .update({
+                    status: 'completed',
+                    updated_at: new Date().toISOString(),
+                    // We don't track completed_at in task_assignments table schema shown in previous files, 
+                    // but we do update updated_at.
+                    // Checking schema from getEmployeeTasksAction: 
+                    // it safely handles nulls. Let's stick to status and updated_at 
+                    // unless we confirm completed_at column exists in task_assignments 
+                    // (It DOES allow it in updateEmployeeTaskStatusAction in employee-task-actions.ts,
+                    // but that might be a different table 'employee_task_assignments'? 
+                    // No, staff-actions.ts used 'task_assignments' in markAssignmentCompletedAction 
+                    // and didn't set completed_at.
+                    // Wait, markAssignmentCompletedAction in staff-actions.ts ONLY sets status and updated_at.
+                    // Let's stick to that pattern to be safe).
+                })
+                .eq('task_id', taskId)
+        }
+
         revalidatePath(`/dashboard/tasks/${taskId}`)
         revalidatePath('/dashboard')
+        revalidatePath('/dashboard/staff') // Revalidate staff lists too
         return { success: true }
     } catch (error) {
         console.error('Update task status error:', error)
+        return { success: false }
+    }
+}
+
+// Mark assignment as in_progress (employee accepts task)
+export async function markAssignmentInProgressAction(assignmentId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+    } catch (error) {
+        console.error('Mark assignment in progress error:', error)
         return { success: false }
     }
 }
@@ -813,11 +856,11 @@ export async function getEmployeeTasksAction(employeeId: string): Promise<{ acti
 
         // Group comments by task
         const commentsByTask = new Map<string, typeof allComments>()
-        ;(allComments || []).forEach(c => {
-            const existing = commentsByTask.get(c.task_id) || []
-            existing.push(c)
-            commentsByTask.set(c.task_id, existing)
-        })
+            ; (allComments || []).forEach(c => {
+                const existing = commentsByTask.get(c.task_id) || []
+                existing.push(c)
+                commentsByTask.set(c.task_id, existing)
+            })
 
         // Process tasks
         const activeTasks: EmployeeTask[] = []
