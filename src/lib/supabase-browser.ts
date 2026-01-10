@@ -22,10 +22,10 @@ export function createSupabaseBrowser() {
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: true,
-            // Use a no-op lock to prevent multiple tabs/windows contentions if needed,
-            // but usually the default lock is fine. The warning "Multiple GoTrueClient"
-            // suggests we are creating createClient() multiple times.
-            // This singleton pattern + 'use client' + module scope variable should prevent it.
+            // Custom lock implementation to prevent hanging on getSession()
+            lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<unknown>) => {
+                return await fn()
+            }
         }
     })
 

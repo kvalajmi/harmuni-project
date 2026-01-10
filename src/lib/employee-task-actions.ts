@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { sendPushNotificationAction } from './onesignal-server'
 
 // Service key for admin operations
 const supabaseAdmin = createClient(
@@ -131,6 +132,63 @@ export async function createEmployeeTaskAction(
         await supabaseAdmin
             .from('notifications')
             .insert(notifications)
+
+        // 5. Send push notifications via OneSignal
+        for (const userId of assignedUserIds) {
+            try {
+                await sendPushNotificationAction({
+                    userIds: [userId],
+                    title: 'مهمة جديدة',
+                    body: `لديك مهمة جديدة: ${title}`,
+                    url: `/dashboard/employee-tasks/${task.id}`
+                })
+            } catch (pushError) {
+                console.error('Failed to send push notification:', pushError)
+                // Continue even if push fails
+            }
+        }
+
+        // 6. Notify admin if creator is not admin
+        const { data: creatorProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('role')
+            .eq('id', creatorId)
+            .single()
+
+        if (creatorProfile?.role !== 'admin') {
+            // Get admin users
+            const { data: admins } = await supabaseAdmin
+                .from('profiles')
+                .select('id')
+                .eq('role', 'admin')
+
+            if (admins && admins.length > 0) {
+                const adminNotifications = admins.map(admin => ({
+                    user_id: admin.id,
+                    message: `مهمة جديدة بين الموظفين: ${title}`,
+                    related_task_id: task.id,
+                    is_read: false
+                }))
+
+                await supabaseAdmin
+                    .from('notifications')
+                    .insert(adminNotifications)
+
+                // Send push to admins
+                for (const admin of admins) {
+                    try {
+                        await sendPushNotificationAction({
+                            userIds: [admin.id],
+                            title: 'مهمة جديدة بين الموظفين',
+                            body: `${title}`,
+                            url: `/dashboard/employee-tasks/${task.id}`
+                        })
+                    } catch (pushError) {
+                        console.error('Failed to send admin push notification:', pushError)
+                    }
+                }
+            }
+        }
 
         revalidatePath('/dashboard')
         revalidatePath('/dashboard/employee-tasks')
@@ -398,6 +456,20 @@ export async function addEmployeeTaskCommentAction(
                 await supabaseAdmin
                     .from('notifications')
                     .insert(notifications)
+
+                // Send push notifications
+                for (const uid of Array.from(usersToNotify)) {
+                    try {
+                        await sendPushNotificationAction({
+                            userIds: [uid],
+                            title: 'تعليق جديد',
+                            body: `تعليق جديد على المهمة: ${task.title}`,
+                            url: `/dashboard/employee-tasks/${taskId}`
+                        })
+                    } catch (pushError) {
+                        console.error('Failed to send comment push notification:', pushError)
+                    }
+                }
             }
         }
 
@@ -492,6 +564,20 @@ export async function closeEmployeeTaskAction(
             await supabaseAdmin
                 .from('notifications')
                 .insert(notifications)
+
+            // Send push notifications
+            for (const uid of Array.from(usersToNotify)) {
+                try {
+                    await sendPushNotificationAction({
+                        userIds: [uid],
+                        title: 'تم إغلاق مهمة',
+                        body: `تم إغلاق المهمة: ${task.title}`,
+                        url: `/dashboard/employee-tasks/${taskId}`
+                    })
+                } catch (pushError) {
+                    console.error('Failed to send close task push notification:', pushError)
+                }
+            }
         }
 
         revalidatePath('/dashboard/employee-tasks')

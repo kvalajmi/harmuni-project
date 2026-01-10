@@ -80,29 +80,29 @@ export function useAdminTasksWithAssignments(userId: string | null) {
     )
 }
 
-// Hook for notifications
-export function useNotifications(userId: string | null) {
+// Hook for notifications with pagination support
+export function useNotifications(userId: string | null, limit: number = 50) {
     return useSWR(
-        userId ? ['notifications', userId] : null,
-        () => getNotificationsAction(userId!),
+        userId ? ['notifications', userId, limit] : null,
+        () => getNotificationsAction(userId!, limit),
         { ...swrConfig, refreshInterval: 120000, revalidateOnFocus: true } // Refresh every 2 minutes, revalidate on focus for notifications
     )
 }
 
-// Hook for admin circulars
-export function useAdminCirculars(userId: string | null) {
+// Hook for admin circulars with pagination support
+export function useAdminCirculars(userId: string | null, limit: number = 30) {
     return useSWR<Circular[]>(
-        userId ? ['admin-circulars', userId] : null,
-        () => getAdminCircularsAction(userId!),
+        userId ? ['admin-circulars', userId, limit] : null,
+        () => getAdminCircularsAction(userId!, limit),
         swrConfig
     )
 }
 
-// Hook for staff circulars
-export function useStaffCirculars(userId: string | null) {
+// Hook for staff circulars with pagination support
+export function useStaffCirculars(userId: string | null, limit: number = 30) {
     return useSWR<StaffCircular[]>(
-        userId ? ['staff-circulars', userId] : null,
-        () => getStaffCircularsAction(userId!),
+        userId ? ['staff-circulars', userId, limit] : null,
+        () => getStaffCircularsAction(userId!, limit),
         swrConfig
     )
 }
@@ -170,9 +170,9 @@ export const mutationKeys = {
     assignedTasks: (userId: string) => ['assigned-tasks', userId],
     createdTasks: (userId: string) => ['created-tasks', userId],
     adminTasksWithAssignments: (userId: string) => ['admin-tasks-assignments', userId],
-    notifications: (userId: string) => ['notifications', userId],
-    adminCirculars: (userId: string) => ['admin-circulars', userId],
-    staffCirculars: (userId: string) => ['staff-circulars', userId],
+    notifications: (userId: string, limit: number = 50) => ['notifications', userId, limit],
+    adminCirculars: (userId: string, limit: number = 30) => ['admin-circulars', userId, limit],
+    staffCirculars: (userId: string, limit: number = 30) => ['staff-circulars', userId, limit],
     employeeProfile: (employeeId: string) => ['employee-profile', employeeId],
     employeeProfileBasic: (employeeId: string) => ['employee-profile-basic', employeeId],
     employeeTasks: (employeeId: string) => ['employee-tasks', employeeId],

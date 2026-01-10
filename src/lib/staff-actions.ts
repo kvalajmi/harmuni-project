@@ -805,7 +805,7 @@ export async function getAssignedTasksAction(userId: string): Promise<AssignedTa
     }
 }
 
-export async function getNotificationsAction(userId: string): Promise<{
+export async function getNotificationsAction(userId: string, limit: number = 50): Promise<{
     id: string
     user_id: string
     message: string
@@ -819,7 +819,7 @@ export async function getNotificationsAction(userId: string): Promise<{
             .select('*')
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-            .limit(20)
+            .limit(limit)
 
         if (error) {
             console.error('Get notifications error:', error)

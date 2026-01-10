@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+set timeout 300
+
+# Server details
+set server "root@167.99.241.118"
+set password "Wwifzin-q73183"
+set path "/root/attendance-system"
+
+spawn ssh $server
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "#" {
+        # Stop container
+        send "cd $path\r"
+        expect "#"
+        
+        send "docker compose down\r"
+        expect "#"
+        
+        # Update code from GitHub
+        send "git pull\r"
+        expect "#"
+        
+        # Remove all caches
+        send "rm -rf .next node_modules .turbo\r"
+        expect "#"
+        
+        # Remove all Docker images
+        send "docker rm -f \$(docker ps -aq) 2>/dev/null || true\r"
+        expect "#"
+        
+        send "docker rmi -f \$(docker images -q) 2>/dev/null || true\r"
+        expect "#"
+        
+        send "docker system prune -af --volumes\r"
+        expect "#"
+        
+        # Rebuild from scratch
+        send "docker compose -f docker-compose.prod.yml build --no-cache\r"
+        expect "#" { send "echo BUILD_COMPLETE\r" }
+        expect "BUILD_COMPLETE"
+        
+        # Start server
+        send "docker compose -f docker-compose.prod.yml up -d\r"
+        expect "#"
+        
+        send "sleep 10 && docker ps\r"
+        expect "#"
+        
+        send "docker logs attendance-system-web-1 --tail 30\r"
+        expect "#"
+        
+        send "exit\r"
+    }
+}
+
+expect eof

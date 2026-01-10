@@ -153,7 +153,7 @@ export async function createCircularAction(input: CreateCircularInput): Promise<
 
 // ============== GET CIRCULARS (ADMIN) ==============
 
-export async function getAdminCircularsAction(userId: string): Promise<Circular[]> {
+export async function getAdminCircularsAction(userId: string, limit: number = 30): Promise<Circular[]> {
     try {
         const { data: circulars, error } = await supabaseAdmin
             .from('circulars')
@@ -161,6 +161,7 @@ export async function getAdminCircularsAction(userId: string): Promise<Circular[
             .eq('created_by', userId)
             .eq('is_archived', false)
             .order('created_at', { ascending: false })
+            .limit(limit)
 
         if (error || !circulars) return []
 
@@ -193,7 +194,7 @@ export async function getAdminCircularsAction(userId: string): Promise<Circular[
 
 // ============== GET CIRCULARS (STAFF) ==============
 
-export async function getStaffCircularsAction(userId: string): Promise<(Circular & { is_read: boolean; read_at: string | null })[]> {
+export async function getStaffCircularsAction(userId: string, limit: number = 30): Promise<(Circular & { is_read: boolean; read_at: string | null })[]> {
     try {
         // Get circulars where user is a recipient
         const { data: recipientRecords, error } = await supabaseAdmin
@@ -205,6 +206,7 @@ export async function getStaffCircularsAction(userId: string): Promise<(Circular
             `)
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
+            .limit(limit)
 
         if (error || !recipientRecords) return []
 
