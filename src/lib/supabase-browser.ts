@@ -2,26 +2,34 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-let browserClient: SupabaseClient | null = null
+let browserClient: SupabaseClient | undefined
 
 export function createSupabaseBrowser() {
     if (browserClient) {
         return browserClient
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
     if (!supabaseUrl || !supabaseAnonKey) {
         throw new Error('Missing Supabase environment variables')
+        // DEBUG: Check for malformed keys
+        if (supabaseAnonKey.startsWith('++')) {
+            console.error('CRITICAL: Supabase Anon Key starts with "++". This is likely a concatenation error.', supabaseAnonKey.substring(0, 10))
+        }
     }
 
+    // Create a new client if one doesn't exist
     browserClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: true,
-            lock: async (_name, _acquireTimeout, fn) => fn(),
+            // Use a no-op lock to prevent multiple tabs/windows contentions if needed,
+            // but usually the default lock is fine. The warning "Multiple GoTrueClient"
+            // suggests we are creating createClient() multiple times.
+            // This singleton pattern + 'use client' + module scope variable should prevent it.
         }
     })
 
