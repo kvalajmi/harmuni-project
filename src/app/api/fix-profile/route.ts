@@ -9,8 +9,8 @@ export async function POST(request: Request) {
     const fullName = body.fullName || 'Admin'
 
     // Get environment variables
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY?.trim()
 
     if (!supabaseUrl || !serviceKey) {
         return NextResponse.json({
@@ -89,8 +89,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const userId = url.searchParams.get('userId') || 'df3a4d08-8d1f-424b-abac-b580499648df'
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY?.trim()
 
     if (!supabaseUrl || !serviceKey) {
         return NextResponse.json({

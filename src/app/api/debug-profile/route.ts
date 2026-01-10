@@ -6,9 +6,9 @@ export async function GET(request: Request) {
     const userId = 'df3a4d08-8d1f-424b-abac-b580499648df'
 
     // Get environment variables
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY?.trim()
 
     const results = {
         userId,

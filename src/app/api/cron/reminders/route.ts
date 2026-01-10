@@ -4,8 +4,8 @@ import { sendReminderEmail } from '@/lib/email'
 
 // Supabase Admin Client - created lazily to avoid build-time errors
 function getSupabaseAdmin() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 
     if (!url || !key) {
         throw new Error('Supabase environment variables not configured')

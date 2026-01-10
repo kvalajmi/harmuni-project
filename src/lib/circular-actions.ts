@@ -7,8 +7,8 @@ import { sendPushNotificationAction } from './onesignal-server'
 
 // Service key must be set in environment variables
 const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.SUPABASE_SERVICE_KEY!.trim(),
     { auth: { autoRefreshToken: false, persistSession: false } }
 )
 

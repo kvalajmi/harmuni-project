@@ -14,10 +14,6 @@ export function createSupabaseBrowser() {
 
     if (!supabaseUrl || !supabaseAnonKey) {
         throw new Error('Missing Supabase environment variables')
-        // DEBUG: Check for malformed keys
-        if (supabaseAnonKey.startsWith('++')) {
-            console.error('CRITICAL: Supabase Anon Key starts with "++". This is likely a concatenation error.', supabaseAnonKey.substring(0, 10))
-        }
     }
 
     // Create a new client if one doesn't exist

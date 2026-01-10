@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 
 // Service key must be set in environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceKey = process.env.SUPABASE_SERVICE_KEY
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+const serviceKey = process.env.SUPABASE_SERVICE_KEY?.trim()
 
 console.log('[DEBUG] Initializing supabaseAdmin:', {
     hasUrl: !!supabaseUrl,
