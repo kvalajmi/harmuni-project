@@ -18,6 +18,7 @@ import {
     addTaskCommentAction,
     updateTaskStatusAction,
     closeTaskWithSyncAction,
+    reopenTaskWithSyncAction,
     TaskComment
 } from '@/lib/staff-actions'
 import { SlideToComplete } from '@/components/slide-to-complete'
@@ -205,8 +206,8 @@ function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
             await closeTaskWithSyncAction(id)
             setTaskStatus('completed')
         } else {
-            // Re-opening
-            await updateTaskStatusAction(id, 'open')
+            // Re-opening: Use the explicit sync action
+            await reopenTaskWithSyncAction(id)
             setTaskStatus('open')
         }
         // Reload task data to ensure everything is in sync

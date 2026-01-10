@@ -625,12 +625,22 @@ export async function updateTaskStatusAction(taskId: string, status: 'open' | 'c
                 .update({ status })
                 .eq('id', taskId)
 
-            // CRITICAL FIX: If task is completed, mark ALL assignments as completed
+            // CRITICAL FIX: Ensure assignments sync with main task status
             if (status === 'completed') {
                 await supabaseAdmin
                     .from('task_assignments')
                     .update({
                         status: 'completed',
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('task_id', taskId)
+            } else if (status === 'open') {
+                // Re-open: Reset completed/in_progress assignments to 'pending' (new)
+                // This forces employees to see it as a new task again
+                await supabaseAdmin
+                    .from('task_assignments')
+                    .update({
+                        status: 'pending',
                         updated_at: new Date().toISOString(),
                     })
                     .eq('task_id', taskId)
@@ -642,6 +652,44 @@ export async function updateTaskStatusAction(taskId: string, status: 'open' | 'c
             return { success: true }
         } catch (error) {
             console.error('Update task status error:', error)
+            return { success: false }
+        }
+    }
+
+    // NEW ACTION: Explicitly reopen task and sync assignments
+    export async function reopenTaskWithSyncAction(taskId: string): Promise<{ success: boolean }> {
+        try {
+            console.log('[Sync] Reopening task:', taskId)
+
+            // 1. Reopen the main task
+            const { error: taskError } = await supabaseAdmin
+                .from('tasks')
+                .update({ status: 'open' })
+                .eq('id', taskId)
+
+            if (taskError) throw taskError
+
+            // 2. Reset ALL assignments to pending
+            const { error: assignError, count } = await supabaseAdmin
+                .from('task_assignments')
+                .update({
+                    status: 'pending',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('task_id', taskId)
+                .select('id', { count: 'exact' })
+
+            console.log('[Sync] Reopen: Updated assignments:', count)
+
+            if (assignError) throw assignError
+
+            revalidatePath(`/dashboard/tasks/${taskId}`)
+            revalidatePath('/dashboard')
+            revalidatePath('/dashboard/staff')
+
+            return { success: true }
+        } catch (error) {
+            console.error('Reopen task sync error:', error)
             return { success: false }
         }
     }
