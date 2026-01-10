@@ -42,7 +42,7 @@ const HomeTab = memo(function HomeTab({
     return (
         <div className="space-y-6">
             {/* Welcome Card */}
-            <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-xl rounded-2xl border border-blue-500/30 dark:border-blue-500/20 p-6">
+            <div className="bg-gradient-to-br from-[#475569]/20 to-[#c9a96e]/20 backdrop-blur-xl rounded-2xl border border-[#c9a96e]/30 dark:border-[#c9a96e]/20 p-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">
                     مرحباً {profile?.full_name || 'بك'} 👋
                 </h2>
@@ -86,7 +86,7 @@ const HomeTab = memo(function HomeTab({
                         <h3 className="text-lg font-bold text-slate-900 dark:text-white">الموظفين</h3>
                         <Link
                             href="/dashboard/staff"
-                            className="text-sm text-blue-500 hover:text-blue-600"
+                            className="text-sm text-[#c9a96e] hover:text-[#b8956a]"
                         >
                             إدارة الموظفين
                         </Link>
@@ -113,7 +113,7 @@ const HomeTab = memo(function HomeTab({
                         <button
                             onClick={() => setFilter('all')}
                             className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'all'
-                                    ? 'bg-blue-500 text-white'
+                                    ? 'bg-[#475569] text-white'
                                     : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                                 }`}
                         >
@@ -122,7 +122,7 @@ const HomeTab = memo(function HomeTab({
                         <button
                             onClick={() => setFilter('has_active')}
                             className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${filter === 'has_active'
-                                    ? 'bg-amber-500 text-white'
+                                    ? 'bg-[#c9a96e] text-white'
                                     : 'bg-white/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                                 }`}
                         >
@@ -163,7 +163,7 @@ const HomeTab = memo(function HomeTab({
                                         <div className="sm:hidden">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                    <div className="w-8 h-8 bg-gradient-to-br from-[#475569] to-[#334155] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                                         {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
                                                     </div>
                                                     <span className="text-sm font-medium text-slate-900 dark:text-white truncate max-w-[140px]">{emp.full_name || emp.email}</span>
@@ -188,7 +188,7 @@ const HomeTab = memo(function HomeTab({
                                         {/* Desktop Table Row */}
                                         <div className="hidden sm:grid grid-cols-12 gap-2 items-center">
                                             <div className="col-span-5 flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                <div className="w-8 h-8 bg-gradient-to-br from-[#475569] to-[#334155] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                                     {emp.full_name?.charAt(0) || emp.email.charAt(0).toUpperCase()}
                                                 </div>
                                                 <span className="text-sm text-slate-900 dark:text-white truncate">{emp.full_name || emp.email}</span>

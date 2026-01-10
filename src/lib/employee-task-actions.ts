@@ -147,38 +147,43 @@ export async function createEmployeeTaskAction(
 // Get tasks for a specific user (created by them or assigned to them)
 export async function getUserEmployeeTasksAction(userId: string): Promise<EmployeeTask[]> {
     try {
-        // Get tasks created by user
-        const { data: createdTasks } = await supabaseAdmin
-            .from('employee_tasks')
-            .select(`
-                *,
-                creator:profiles!employee_tasks_created_by_fkey(full_name, role),
-                employee_task_assignments(user_id, status, updated_at, user:profiles(full_name)),
-                employee_task_comments(count)
-            `)
-            .eq('created_by', userId)
-            .order('created_at', { ascending: false })
+        // Execute both queries in parallel with limits
+        const [createdTasksResult, assignedTasksResult] = await Promise.all([
+            // Get tasks created by user (limited to 50)
+            supabaseAdmin
+                .from('employee_tasks')
+                .select(`
+                    *,
+                    creator:profiles!employee_tasks_created_by_fkey(full_name, role),
+                    employee_task_assignments(user_id, status, updated_at, user:profiles(full_name)),
+                    employee_task_comments(count)
+                `)
+                .eq('created_by', userId)
+                .order('created_at', { ascending: false })
+                .limit(50),
 
-        // Get tasks assigned to user
-        const { data: assignedTasks } = await supabaseAdmin
-            .from('employee_tasks')
-            .select(`
-                *,
-                creator:profiles!employee_tasks_created_by_fkey(full_name, role),
-                employee_task_assignments!inner(user_id, status, updated_at, user:profiles(full_name)),
-                employee_task_comments(count)
-            `)
-            .eq('employee_task_assignments.user_id', userId)
-            .neq('created_by', userId) // Exclude tasks already in createdTasks
-            .order('created_at', { ascending: false })
+            // Get tasks assigned to user (limited to 50)
+            supabaseAdmin
+                .from('employee_tasks')
+                .select(`
+                    *,
+                    creator:profiles!employee_tasks_created_by_fkey(full_name, role),
+                    employee_task_assignments!inner(user_id, status, updated_at, user:profiles(full_name)),
+                    employee_task_comments(count)
+                `)
+                .eq('employee_task_assignments.user_id', userId)
+                .neq('created_by', userId)
+                .order('created_at', { ascending: false })
+                .limit(50)
+        ])
 
         // Combine and format tasks
-        const allTasks = [...(createdTasks || []), ...(assignedTasks || [])]
+        const allTasks = [...(createdTasksResult.data || []), ...(assignedTasksResult.data || [])]
 
-        // Sort by created_at and limit to 100
+        // Sort by created_at and limit to 50 total
         const sortedTasks = allTasks
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .slice(0, 100)
+            .slice(0, 50)
 
         return sortedTasks.map(task => ({
             ...task,
@@ -208,7 +213,7 @@ export async function getAllEmployeeTasksAction(): Promise<EmployeeTask[]> {
                 employee_task_comments(count)
             `)
             .order('created_at', { ascending: false })
-            .limit(100)
+            .limit(50)
 
         if (error) {
             console.error('Get all employee tasks error:', error)
@@ -239,45 +244,49 @@ export async function getEmployeeTaskDetailsAction(taskId: string): Promise<{
     comments: EmployeeTaskComment[]
 }> {
     try {
-        // Get task details
-        const { data: task, error: taskError } = await supabaseAdmin
-            .from('employee_tasks')
-            .select(`
-                *,
-                creator:profiles!employee_tasks_created_by_fkey(full_name, role),
-                closer:profiles!employee_tasks_closed_by_fkey(full_name, role)
-            `)
-            .eq('id', taskId)
-            .single()
+        // Execute all queries in parallel for better performance
+        const [taskResult, assignmentsResult, commentsResult] = await Promise.all([
+            // Get task details
+            supabaseAdmin
+                .from('employee_tasks')
+                .select(`
+                    *,
+                    creator:profiles!employee_tasks_created_by_fkey(full_name, role),
+                    closer:profiles!employee_tasks_closed_by_fkey(full_name, role)
+                `)
+                .eq('id', taskId)
+                .single(),
 
-        if (taskError || !task) {
-            console.error('Get task details error:', taskError)
+            // Get assignments
+            supabaseAdmin
+                .from('employee_task_assignments')
+                .select(`
+                    *,
+                    user:profiles(full_name, email)
+                `)
+                .eq('task_id', taskId),
+
+            // Get comments (limited to last 50)
+            supabaseAdmin
+                .from('employee_task_comments')
+                .select(`
+                    *,
+                    user:profiles(full_name, role)
+                `)
+                .eq('task_id', taskId)
+                .order('created_at', { ascending: true })
+                .limit(50)
+        ])
+
+        if (taskResult.error || !taskResult.data) {
+            console.error('Get task details error:', taskResult.error)
             return { task: null, assignments: [], comments: [] }
         }
 
-        // Get assignments
-        const { data: assignments } = await supabaseAdmin
-            .from('employee_task_assignments')
-            .select(`
-                *,
-                user:profiles(full_name, email)
-            `)
-            .eq('task_id', taskId)
-
-        // Get comments
-        const { data: comments } = await supabaseAdmin
-            .from('employee_task_comments')
-            .select(`
-                *,
-                user:profiles(full_name, role)
-            `)
-            .eq('task_id', taskId)
-            .order('created_at', { ascending: true })
-
         return {
-            task,
-            assignments: assignments || [],
-            comments: comments || []
+            task: taskResult.data,
+            assignments: assignmentsResult.data || [],
+            comments: commentsResult.data || []
         }
     } catch (error) {
         console.error('Get task details exception:', error)

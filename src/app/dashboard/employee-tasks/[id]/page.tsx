@@ -61,23 +61,12 @@ function EmployeeTaskDetailsContent() {
     const loadTaskDetails = async () => {
         setLoading(true)
         try {
-            console.log('[DEBUG] Loading task details for:', taskId)
             const data = await getEmployeeTaskDetailsAction(taskId)
-            console.log('[DEBUG] Task data received:', data)
 
             if (data) {
                 setTask(data.task)
-                // Strict array checks
-                const safeAssignments = Array.isArray(data.assignments) ? data.assignments : []
-                const safeComments = Array.isArray(data.comments) ? data.comments : []
-
-                console.log('[DEBUG] Safe data:', {
-                    assignmentsCount: safeAssignments.length,
-                    commentsCount: safeComments.length
-                })
-
-                setAssignments(safeAssignments)
-                setComments(safeComments)
+                setAssignments(Array.isArray(data.assignments) ? data.assignments : [])
+                setComments(Array.isArray(data.comments) ? data.comments : [])
             }
         } catch (error) {
             console.error('Error loading task details:', error)
@@ -91,14 +80,23 @@ function EmployeeTaskDetailsContent() {
     const handleStatusUpdate = async (status: 'pending' | 'in_progress' | 'completed') => {
         if (!userAssignment || !user?.id) return
 
+        // Optimistic update - update UI immediately
+        const previousAssignments = [...assignments]
+        setAssignments(prev => prev.map(a =>
+            a.id === userAssignment.id
+                ? { ...a, status, updated_at: new Date().toISOString() }
+                : a
+        ))
+
         const result = await updateEmployeeTaskStatusAction(
             userAssignment.id,
             status,
             user.id
         )
 
-        if (result.success) {
-            await loadTaskDetails()
+        // Revert on failure
+        if (!result.success) {
+            setAssignments(previousAssignments)
         }
     }
 
@@ -106,16 +104,36 @@ function EmployeeTaskDetailsContent() {
         if (!newComment.trim() || !user?.id || sendingComment) return
 
         setSendingComment(true)
+        const commentText = newComment.trim()
+
+        // Optimistic update - add comment immediately
+        const tempComment: EmployeeTaskComment = {
+            id: `temp-${Date.now()}`,
+            task_id: taskId,
+            user_id: user.id,
+            comment: commentText,
+            attachment_url: null,
+            created_at: new Date().toISOString(),
+            user: {
+                full_name: profile?.full_name || null,
+                role: profile?.role || 'employee'
+            }
+        }
+
+        setComments(prev => [...prev, tempComment])
+        setNewComment('')
+
         try {
             const result = await addEmployeeTaskCommentAction(
                 taskId,
                 user.id,
-                newComment.trim()
+                commentText
             )
 
-            if (result.success) {
-                setNewComment('')
-                await loadTaskDetails()
+            if (!result.success) {
+                // Remove temp comment on failure
+                setComments(prev => prev.filter(c => c.id !== tempComment.id))
+                setNewComment(commentText)
             }
         } finally {
             setSendingComment(false)
@@ -126,10 +144,13 @@ function EmployeeTaskDetailsContent() {
         if (!user?.id || !canClose) return
 
         if (confirm('هل أنت متأكد من إغلاق هذه المهمة؟')) {
+            // Optimistic update
+            const previousTask = task
+            setTask(prev => prev ? { ...prev, is_closed: true, closed_at: new Date().toISOString() } : null)
+
             const result = await closeEmployeeTaskAction(taskId, user.id, isAdmin)
-            if (result.success) {
-                await loadTaskDetails()
-            } else {
+            if (!result.success) {
+                setTask(previousTask)
                 alert(result.error || 'فشل في إغلاق المهمة')
             }
         }
@@ -191,7 +212,7 @@ function EmployeeTaskDetailsContent() {
                     <p className="text-gray-500 dark:text-gray-400 mb-4">المهمة غير موجودة</p>
                     <Link
                         href="/dashboard/employee-tasks"
-                        className="text-blue-500 hover:underline"
+                        className="text-[#c9a96e] hover:underline"
                     >
                         العودة للمهام
                     </Link>
@@ -207,12 +228,19 @@ function EmployeeTaskDetailsContent() {
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between py-4">
                         <div className="flex items-center gap-4">
-                            <Link
-                                href="/dashboard/employee-tasks"
+                            <button
+                                onClick={() => {
+                                    // Check if we can go back, otherwise go to dashboard home
+                                    if (window.history.length > 2) {
+                                        router.back()
+                                    } else {
+                                        router.push('/dashboard?tab=home')
+                                    }
+                                }}
                                 className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                             >
                                 ← رجوع
-                            </Link>
+                            </button>
                             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                                 تفاصيل المهمة
                                 <span className="mr-2 text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">v2.0.1-fix</span>
@@ -301,7 +329,7 @@ function EmployeeTaskDetailsContent() {
                         {safeAssignments.map(assignment => (
                             <div key={assignment.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold">
+                                    <div className="w-10 h-10 bg-[#475569] text-white rounded-full flex items-center justify-center font-semibold">
                                         {assignment.user?.full_name?.charAt(0) || '؟'}
                                     </div>
                                     <div>
@@ -353,7 +381,7 @@ function EmployeeTaskDetailsContent() {
                         ) : (
                             safeComments.map(comment => (
                                 <div key={comment.id} className="flex gap-3">
-                                    <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
+                                    <div className="w-10 h-10 bg-[#475569] text-white rounded-full flex items-center justify-center font-semibold flex-shrink-0">
                                         {comment.user?.full_name?.charAt(0) || '؟'}
                                     </div>
                                     <div className="flex-1">
@@ -402,7 +430,7 @@ function EmployeeTaskDetailsContent() {
                                     <button
                                         onClick={handleAddComment}
                                         disabled={!newComment.trim() || sendingComment}
-                                        className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-2 px-4 py-2 bg-[#c9a96e] text-white rounded-lg hover:bg-[#b8956a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {sendingComment ? 'جاري الإرسال...' : 'إرسال'}
                                     </button>

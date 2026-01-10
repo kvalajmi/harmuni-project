@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,42 +13,83 @@ function LoginForm() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
+    const [checkingAuth, setCheckingAuth] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
     const searchParams = useSearchParams()
 
-    // إظهار رسالة إذا تم طرد المستخدم بسبب إيقاف حسابه
+    // Check if user is already logged in
+    useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                const supabase = createSupabaseBrowser()
+                const { data: { session } } = await supabase.auth.getSession()
+
+                if (session?.user) {
+                    // User is already logged in, redirect to dashboard
+                    window.location.href = '/dashboard'
+                    return
+                }
+            } catch (err) {
+                console.error('Auth check error:', err)
+            }
+            setCheckingAuth(false)
+        }
+
+        checkAuth()
+    }, [])
+
     useEffect(() => {
         if (searchParams.get('suspended') === 'true') {
             setError('تم إيقاف حسابك من قبل مدير النظام')
         }
     }, [searchParams])
 
+    // Show loading while checking auth
+    if (checkingAuth) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#475569] via-[#334155] to-[#1e293b]">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#c9a96e]"></div>
+            </div>
+        )
+    }
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
+
+        if (!email || !password) {
+            setError('يرجى إدخال البريد وكلمة المرور')
+            return
+        }
+
         setLoading(true)
         setError(null)
+
+        // Timeout after 15 seconds
+        const timeoutId = setTimeout(() => {
+            setError('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى')
+            setLoading(false)
+        }, 15000)
 
         try {
             const supabase = createSupabaseBrowser()
 
-            // Sign in with Supabase
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
+            const { data, error: authError } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
                 password,
             })
 
-            if (error) {
-                console.error('[Login] Auth error:', error)
-                setError(error.message === 'Invalid login credentials'
+            clearTimeout(timeoutId)
+
+            if (authError) {
+                setError(authError.message === 'Invalid login credentials'
                     ? 'بيانات الدخول غير صحيحة'
-                    : error.message || 'حدث خطأ في تسجيل الدخول')
+                    : authError.message || 'حدث خطأ في تسجيل الدخول')
                 setLoading(false)
                 return
             }
 
-            // Check if account is suspended
-            if (data.user) {
+            if (data?.user) {
                 const { data: profile } = await supabase
                     .from('profiles')
                     .select('is_active')
@@ -60,52 +102,47 @@ function LoginForm() {
                     setLoading(false)
                     return
                 }
+
+                // Redirect to dashboard
+                window.location.href = '/dashboard'
+            } else {
+                setError('لم يتم العثور على بيانات المستخدم')
+                setLoading(false)
             }
-
-            console.log('[Login] Success, redirecting to dashboard...')
-
-            // Use router.push for client-side navigation
-            router.push('/dashboard')
-        } catch (err) {
-            console.error('[Login] Exception:', err)
-            setError('حدث خطأ غير متوقع')
-        } finally {
+        } catch (err: any) {
+            clearTimeout(timeoutId)
+            setError(err?.message || 'حدث خطأ غير متوقع')
             setLoading(false)
         }
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#475569] via-[#334155] to-[#1e293b] p-4">
             {/* Background decorations */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
-                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
+                <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#c9a96e]/10 rounded-full blur-3xl" />
+                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#c9a96e]/10 rounded-full blur-3xl" />
             </div>
 
-            <Card className="w-full max-w-md bg-slate-800/50 backdrop-blur-xl border-slate-700/50 shadow-2xl">
-                <CardHeader className="text-center space-y-4 pb-8">
-                    {/* Logo/Icon */}
-                    <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                        <svg
-                            className="w-8 h-8 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                            />
-                        </svg>
+            <Card className="w-full max-w-md bg-[#334155]/50 backdrop-blur-xl border-[#475569]/50 shadow-2xl">
+                <CardHeader className="text-center space-y-4 pb-6">
+                    {/* Company Logo */}
+                    <div className="mx-auto w-24 h-24 rounded-2xl overflow-hidden shadow-lg border-2 border-[#c9a96e]/30">
+                        <Image
+                            src="/logo.jpg"
+                            alt="Harmuni Plus Logo"
+                            width={96}
+                            height={96}
+                            className="w-full h-full object-cover"
+                            priority
+                        />
                     </div>
                     <div>
                         <CardTitle className="text-2xl font-bold text-white">
-                            مرحباً بك
+                            مرحباً بكم
                         </CardTitle>
-                        <CardDescription className="text-slate-400 mt-2">
-                            قم بتسجيل الدخول للوصول إلى لوحة التحكم
+                        <CardDescription className="text-[#c9a96e] mt-2 text-base">
+                            في نظام المهام لشركة هارموني بلس
                         </CardDescription>
                     </div>
                 </CardHeader>
@@ -134,7 +171,7 @@ function LoginForm() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
                                 disabled={loading}
-                                className="h-14 text-lg bg-slate-700/50 border-slate-600/50 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-all"
+                                className="h-14 text-lg bg-[#475569]/50 border-[#475569]/50 text-white placeholder:text-slate-500 focus:border-[#c9a96e] focus:ring-[#c9a96e]/20 rounded-xl transition-all"
                             />
                         </div>
 
@@ -152,7 +189,7 @@ function LoginForm() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 disabled={loading}
-                                className="h-14 text-lg bg-slate-700/50 border-slate-600/50 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl transition-all"
+                                className="h-14 text-lg bg-[#475569]/50 border-[#475569]/50 text-white placeholder:text-slate-500 focus:border-[#c9a96e] focus:ring-[#c9a96e]/20 rounded-xl transition-all"
                             />
                         </div>
 
@@ -160,7 +197,7 @@ function LoginForm() {
                         <Button
                             type="submit"
                             disabled={loading}
-                            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-300 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
+                            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-[#c9a96e] to-[#b8956a] hover:from-[#b8956a] hover:to-[#a78560] text-white rounded-xl shadow-lg shadow-[#c9a96e]/25 transition-all duration-300 hover:shadow-[#c9a96e]/40 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
                         >
                             {loading ? (
                                 <div className="flex items-center justify-center gap-3">
@@ -194,8 +231,8 @@ function LoginForm() {
 
                     {/* Footer */}
                     <div className="mt-8 text-center">
-                        <p className="text-slate-500 text-sm">
-                            Harmuni Task © {new Date().getFullYear()}
+                        <p className="text-[#c9a96e]/70 text-sm">
+                            Harmuni Plus © {new Date().getFullYear()}
                         </p>
                     </div>
                 </CardContent>
@@ -207,8 +244,8 @@ function LoginForm() {
 export default function LoginPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#475569] via-[#334155] to-[#1e293b]">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#c9a96e]"></div>
             </div>
         }>
             <LoginForm />
