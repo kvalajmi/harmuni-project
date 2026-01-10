@@ -17,6 +17,7 @@ import {
     getTaskCommentsAction,
     addTaskCommentAction,
     updateTaskStatusAction,
+    closeTaskWithSyncAction,
     TaskComment
 } from '@/lib/staff-actions'
 import { SlideToComplete } from '@/components/slide-to-complete'
@@ -95,14 +96,11 @@ function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
                     // Create the complete comment object
                     const newComment: TaskComment = {
                         id: newCommentData.id,
-                        task_id: newCommentData.task_id,
                         user_id: newCommentData.user_id,
                         content: newCommentData.content,
                         created_at: newCommentData.created_at,
-                        user: {
-                            full_name: userProfile?.full_name || 'Unknown',
-                            role: userProfile?.role || 'member'
-                        }
+                        user_name: userProfile?.full_name || 'Unknown',
+                        user_role: userProfile?.role || 'member'
                     }
 
                     // Append the new comment to existing comments
@@ -178,14 +176,11 @@ function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
         const tempId = `temp-${Date.now()}`
         const optimisticComment: TaskComment = {
             id: tempId,
-            task_id: id,
             user_id: userId,
             content: commentText,
             created_at: new Date().toISOString(),
-            user: {
-                full_name: profile?.full_name || 'You',
-                role: profile?.role || 'member'
-            }
+            user_name: profile?.full_name || 'You',
+            user_role: profile?.role || 'member'
         }
 
         setComments(prev => [...prev, optimisticComment])
@@ -193,13 +188,11 @@ function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
         // Send the comment to the server
         const result = await addTaskCommentAction(id, userId, commentText)
 
-        // If successful, replace temp comment with real one
-        if (result.success && result.data) {
-            setComments(prev => {
-                // Remove the optimistic comment and add the real one
-                return prev.map(c => c.id === tempId ? { ...result.data!, user: optimisticComment.user } : c)
-            })
-        } else {
+        // If successful, just keep the optimistic one (or we could re-fetch, but real-time will likely handle it)
+        // Since we don't get the ID back, rely on real-time to replace it or just leave it.
+        // For better UX, we'll leave it. The real-time event will eventually come and might duplicate if we aren't careful,
+        // but the duplicate check in realtime handler handles that.
+        if (!result.success) {
             // On error, remove the optimistic comment
             setComments(prev => prev.filter(c => c.id !== tempId))
         }
@@ -207,9 +200,15 @@ function TaskDetailsContent({ params }: { params: Promise<{ id: string }> }) {
     }
 
     const handleToggleStatus = async () => {
-        const newStatus = taskStatus === 'open' ? 'completed' : 'open'
-        await updateTaskStatusAction(id, newStatus)
-        setTaskStatus(newStatus)
+        if (taskStatus === 'open') {
+            // Closing: Use the explicit sync action
+            await closeTaskWithSyncAction(id)
+            setTaskStatus('completed')
+        } else {
+            // Re-opening
+            await updateTaskStatusAction(id, 'open')
+            setTaskStatus('open')
+        }
         // Reload task data to ensure everything is in sync
         await loadTask()
     }
