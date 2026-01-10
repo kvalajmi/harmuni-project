@@ -588,197 +588,169 @@ export async function updateTaskStatusAction(taskId: string, status: 'open' | 'c
             .update({ status })
             .eq('id', taskId)
 
-        // CRITICAL FIX: If task is completed, mark ALL assignments as completed
+        // CRITICAL FIX: Ensure assignments sync with main task status
         if (status === 'completed') {
             await supabaseAdmin
                 .from('task_assignments')
                 .update({
                     status: 'completed',
                     updated_at: new Date().toISOString(),
-                    // We don't track completed_at in task_assignments table schema shown in previous files, 
-                    // but we do update updated_at.
-                    // Checking schema from getEmployeeTasksAction: 
-                    // it safely handles nulls. Let's stick to status and updated_at 
-                    // unless we confirm completed_at column exists in task_assignments 
-                    // (It DOES allow it in updateEmployeeTaskStatusAction in employee-task-actions.ts,
-                    // but that might be a different table 'employee_task_assignments'? 
-                    // No, staff-actions.ts used 'task_assignments' in markAssignmentCompletedAction 
-                    // and didn't set completed_at.
-                    // Wait, markAssignmentCompletedAction in staff-actions.ts ONLY sets status and updated_at.
-                    // Let's stick to that pattern to be safe).
+                })
+                .eq('task_id', taskId)
+        } else if (status === 'open') {
+            // Re-open: Reset completed/in_progress assignments to 'pending' (new)
+            // This forces employees to see it as a new task again
+            await supabaseAdmin
+                .from('task_assignments')
+                .update({
+                    status: 'pending',
+                    updated_at: new Date().toISOString(),
                 })
                 .eq('task_id', taskId)
         }
 
         revalidatePath(`/dashboard/tasks/${taskId}`)
         revalidatePath('/dashboard')
-        revalidatePath('/dashboard/staff') // Revalidate staff lists too
+        revalidatePath('/dashboard/staff')
         return { success: true }
     } catch (error) {
         console.error('Update task status error:', error)
         return { success: false }
     }
-    export async function updateTaskStatusAction(taskId: string, status: 'open' | 'completed'): Promise<{ success: boolean }> {
-        try {
-            await supabaseAdmin
-                .from('tasks')
-                .update({ status })
-                .eq('id', taskId)
+}
 
-            // CRITICAL FIX: Ensure assignments sync with main task status
-            if (status === 'completed') {
-                await supabaseAdmin
-                    .from('task_assignments')
-                    .update({
-                        status: 'completed',
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('task_id', taskId)
-            } else if (status === 'open') {
-                // Re-open: Reset completed/in_progress assignments to 'pending' (new)
-                // This forces employees to see it as a new task again
-                await supabaseAdmin
-                    .from('task_assignments')
-                    .update({
-                        status: 'pending',
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('task_id', taskId)
-            }
+// NEW ACTION: Explicitly reopen task and sync assignments
+export async function reopenTaskWithSyncAction(taskId: string): Promise<{ success: boolean }> {
+    try {
+        console.log('[Sync] Reopening task:', taskId)
 
-            revalidatePath(`/dashboard/tasks/${taskId}`)
-            revalidatePath('/dashboard')
-            revalidatePath('/dashboard/staff')
-            return { success: true }
-        } catch (error) {
-            console.error('Update task status error:', error)
-            return { success: false }
-        }
+        // 1. Reopen the main task
+        const { error: taskError } = await supabaseAdmin
+            .from('tasks')
+            .update({ status: 'open' })
+            .eq('id', taskId)
+
+        if (taskError) throw taskError
+
+        // 2. Reset ALL assignments to pending
+        const { error: assignError } = await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'pending',
+                updated_at: new Date().toISOString()
+            })
+            .eq('task_id', taskId)
+
+        const { count } = await supabaseAdmin
+            .from('task_assignments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', taskId)
+
+        console.log('[Sync] Reopen: Updated assignments:', count)
+
+        if (assignError) throw assignError
+
+        revalidatePath(`/dashboard/tasks/${taskId}`)
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/staff')
+
+        return { success: true }
+    } catch (error) {
+        console.error('Reopen task sync error:', error)
+        return { success: false }
     }
+}
 
-    // NEW ACTION: Explicitly reopen task and sync assignments
-    export async function reopenTaskWithSyncAction(taskId: string): Promise<{ success: boolean }> {
-        try {
-            console.log('[Sync] Reopening task:', taskId)
+// NEW ACTION: Explicitly close task and sync assignments (Force Sync)
+export async function closeTaskWithSyncAction(taskId: string): Promise<{ success: boolean }> {
+    try {
+        console.log('[Sync] Closing task:', taskId)
 
-            // 1. Reopen the main task
-            const { error: taskError } = await supabaseAdmin
-                .from('tasks')
-                .update({ status: 'open' })
-                .eq('id', taskId)
 
-            if (taskError) throw taskError
+        // 1. Close the main task
+        const { error: taskError } = await supabaseAdmin
+            .from('tasks')
+            .update({ status: 'completed' })
+            .eq('id', taskId)
 
-            // 2. Reset ALL assignments to pending
-            const { error: assignError, count } = await supabaseAdmin
-                .from('task_assignments')
-                .update({
-                    status: 'pending',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('task_id', taskId)
-                .select('id', { count: 'exact' })
+        if (taskError) throw taskError
 
-            console.log('[Sync] Reopen: Updated assignments:', count)
+        // 2. Close ALL assignments
+        const { error: assignError } = await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'completed',
+                updated_at: new Date().toISOString()
+            })
+            .eq('task_id', taskId)
 
-            if (assignError) throw assignError
+        const { count } = await supabaseAdmin
+            .from('task_assignments')
+            .select('*', { count: 'exact', head: true })
+            .eq('task_id', taskId)
 
-            revalidatePath(`/dashboard/tasks/${taskId}`)
-            revalidatePath('/dashboard')
-            revalidatePath('/dashboard/staff')
+        console.log('[Sync] Implementation: Updated assignments:', count)
 
-            return { success: true }
-        } catch (error) {
-            console.error('Reopen task sync error:', error)
-            return { success: false }
-        }
+        if (assignError) throw assignError
+
+        revalidatePath(`/dashboard/tasks/${taskId}`)
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/staff') // Revalidate staff lists too
+
+        return { success: true }
+    } catch (error) {
+        console.error('Close task sync error:', error)
+        return { success: false }
     }
+}
 
-    // NEW ACTION: Explicitly close task and sync assignments (Force Sync)
-    export async function closeTaskWithSyncAction(taskId: string): Promise<{ success: boolean }> {
-        try {
-            console.log('[Sync] Closing task:', taskId)
+// Mark assignment as in_progress (employee accepts task)
+export async function markAssignmentInProgressAction(assignmentId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
 
-            // 1. Close the main task
-            const { error: taskError } = await supabaseAdmin
-                .from('tasks')
-                .update({ status: 'completed' })
-                .eq('id', taskId)
-
-            if (taskError) throw taskError
-
-            // 2. Close ALL assignments
-            const { error: assignError, count } = await supabaseAdmin
-                .from('task_assignments')
-                .update({
-                    status: 'completed',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('task_id', taskId)
-                .select('id', { count: 'exact' })
-
-            console.log('[Sync] Implementation: Updated assignments:', count)
-
-            if (assignError) throw assignError
-
-            revalidatePath(`/dashboard/tasks/${taskId}`)
-            revalidatePath('/dashboard')
-            revalidatePath('/dashboard/staff') // Revalidate staff lists too
-
-            return { success: true }
-        } catch (error) {
-            console.error('Close task sync error:', error)
-            return { success: false }
-        }
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+    } catch (error) {
+        console.error('Mark assignment in progress error:', error)
+        return { success: false }
     }
+}
 
-    // Mark assignment as in_progress (employee accepts task)
-    export async function markAssignmentInProgressAction(assignmentId: string): Promise<{ success: boolean }> {
-        try {
-            await supabaseAdmin
-                .from('task_assignments')
-                .update({
-                    status: 'in_progress',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', assignmentId)
+// ============== ASSIGNED TASKS (for Staff Dashboard) ==============
 
-            revalidatePath('/dashboard')
-            revalidatePath('/dashboard/staff')
-            return { success: true }
-        } catch (error) {
-            console.error('Mark assignment in progress error:', error)
-            return { success: false }
-        }
-    }
-
-    // ============== ASSIGNED TASKS (for Staff Dashboard) ==============
-
-    export interface AssignedTask {
+export interface AssignedTask {
+    id: string
+    task_id: string
+    user_id: string
+    status: string
+    response_note: string | null
+    assigned_at: string
+    updated_at: string
+    task: {
         id: string
-        task_id: string
-        user_id: string
-        status: string
-        response_note: string | null
-        assigned_at: string
-        updated_at: string
-        task: {
-            id: string
-            title: string
-            description: string | null
-            created_at: string
-            is_archived: boolean
-        } | null
-    }
+        title: string
+        description: string | null
+        created_at: string
+        is_archived: boolean
+    } | null
+}
 
-    export async function getAssignedTasksAction(userId: string): Promise<AssignedTask[]> {
-        try {
-            console.log('[DEBUG] getAssignedTasksAction - Starting for user:', userId?.substring(0, 8) + '...')
+export async function getAssignedTasksAction(userId: string): Promise<AssignedTask[]> {
+    try {
+        console.log('[DEBUG] getAssignedTasksAction - Starting for user:', userId?.substring(0, 8) + '...')
 
-            // Step 1: Get all task assignments for this user
-            const { data: assignments, error } = await supabaseAdmin
-                .from('task_assignments')
-                .select(`
+        // Step 1: Get all task assignments for this user
+        const { data: assignments, error } = await supabaseAdmin
+            .from('task_assignments')
+            .select(`
                 id,
                 task_id,
                 user_id,
@@ -788,646 +760,646 @@ export async function updateTaskStatusAction(taskId: string, status: 'open' | 'c
                 updated_at,
                 task:tasks(id, title, description, created_at, is_archived)
             `)
-                .eq('user_id', userId)
-                .order('assigned_at', { ascending: false })
+            .eq('user_id', userId)
+            .order('assigned_at', { ascending: false })
 
-            console.log('[DEBUG] Assigned tasks query result:', {
-                userId: userId?.substring(0, 8) + '...',
-                hasData: !!assignments,
-                assignmentCount: assignments?.length || 0,
-                error: error?.message || null,
-                firstAssignment: assignments?.[0] ? {
-                    id: assignments[0].id.substring(0, 8) + '...',
-                    taskId: assignments[0].task_id?.substring(0, 8) + '...',
-                    status: assignments[0].status
-                } : null
-            })
+        console.log('[DEBUG] Assigned tasks query result:', {
+            userId: userId?.substring(0, 8) + '...',
+            hasData: !!assignments,
+            assignmentCount: assignments?.length || 0,
+            error: error?.message || null,
+            firstAssignment: assignments?.[0] ? {
+                id: assignments[0].id.substring(0, 8) + '...',
+                taskId: assignments[0].task_id?.substring(0, 8) + '...',
+                status: assignments[0].status
+            } : null
+        })
 
-            if (error) {
-                console.error('[ERROR] Get assigned tasks error:', error)
-                return []
-            }
-
-            // Step 2: Filter out null tasks and archived tasks
-            const result = (assignments || [])
-                .filter(a => {
-                    const task = a.task as unknown as { id: string; is_archived: boolean } | null
-                    return task !== null && task !== undefined && task.is_archived === false
-                })
-                .map(a => ({
-                    ...a,
-                    task: a.task as unknown as AssignedTask['task']
-                }))
-
-            console.log('[DEBUG] getAssignedTasksAction - Final result:', {
-                userId: userId?.substring(0, 8) + '...',
-                filteredCount: result.length,
-                originalCount: assignments?.length || 0
-            })
-
-            return result
-        } catch (error) {
-            console.error('[ERROR] Get assigned tasks exception:', error)
-            console.error('[ERROR] Stack trace:', error instanceof Error ? error.stack : 'No stack trace')
+        if (error) {
+            console.error('[ERROR] Get assigned tasks error:', error)
             return []
         }
+
+        // Step 2: Filter out null tasks and archived tasks
+        const result = (assignments || [])
+            .filter(a => {
+                const task = a.task as unknown as { id: string; is_archived: boolean } | null
+                return task !== null && task !== undefined && task.is_archived === false
+            })
+            .map(a => ({
+                ...a,
+                task: a.task as unknown as AssignedTask['task']
+            }))
+
+        console.log('[DEBUG] getAssignedTasksAction - Final result:', {
+            userId: userId?.substring(0, 8) + '...',
+            filteredCount: result.length,
+            originalCount: assignments?.length || 0
+        })
+
+        return result
+    } catch (error) {
+        console.error('[ERROR] Get assigned tasks exception:', error)
+        console.error('[ERROR] Stack trace:', error instanceof Error ? error.stack : 'No stack trace')
+        return []
     }
+}
 
-    export async function getNotificationsAction(userId: string): Promise<{
-        id: string
-        user_id: string
-        message: string
-        related_task_id: string | null
-        is_read: boolean
-        created_at: string
-    }[]> {
-        try {
-            const { data, error } = await supabaseAdmin
-                .from('notifications')
-                .select('*')
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(20)
+export async function getNotificationsAction(userId: string): Promise<{
+    id: string
+    user_id: string
+    message: string
+    related_task_id: string | null
+    is_read: boolean
+    created_at: string
+}[]> {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20)
 
-            if (error) {
-                console.error('Get notifications error:', error)
-                return []
-            }
-
-            return data || []
-        } catch (error) {
+        if (error) {
             console.error('Get notifications error:', error)
             return []
         }
+
+        return data || []
+    } catch (error) {
+        console.error('Get notifications error:', error)
+        return []
     }
+}
 
-    export async function markNotificationReadAction(notificationId: string): Promise<{ success: boolean }> {
-        try {
-            await supabaseAdmin
-                .from('notifications')
-                .update({ is_read: true })
-                .eq('id', notificationId)
+export async function markNotificationReadAction(notificationId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('id', notificationId)
 
-            return { success: true }
-        } catch (error) {
-            console.error('Mark notification read error:', error)
-            return { success: false }
-        }
+        return { success: true }
+    } catch (error) {
+        console.error('Mark notification read error:', error)
+        return { success: false }
     }
+}
 
-    // ============== EMPLOYEE PROFILE ==============
+// ============== EMPLOYEE PROFILE ==============
 
-    export interface EmployeeProfile {
+export interface EmployeeProfile {
+    id: string
+    full_name: string | null
+    email: string
+    role: string
+    created_at: string
+    groups: { id: string; name: string }[]
+}
+
+export interface EmployeeTask {
+    id: string
+    task_id: string
+    user_id: string
+    task_title: string
+    task_description: string | null
+    status: string
+    assigned_at: string
+    updated_at: string
+    completed_at: string | null
+    reminder_sent_at: string | null
+    response_note: string | null
+    comments: {
         id: string
-        full_name: string | null
-        email: string
-        role: string
-        created_at: string
-        groups: { id: string; name: string }[]
-    }
-
-    export interface EmployeeTask {
-        id: string
-        task_id: string
-        user_id: string
-        task_title: string
-        task_description: string | null
-        status: string
-        assigned_at: string
-        updated_at: string
-        completed_at: string | null
-        reminder_sent_at: string | null
-        response_note: string | null
-        comments: {
-            id: string
-            content: string
-            user_name: string
-            user_role: string
-            created_at: string
-        }[]
-    }
-
-    export interface EmployeeCircular {
-        id: string
-        circular_id: string
-        title: string
         content: string
-        is_read: boolean
-        read_at: string | null
+        user_name: string
+        user_role: string
         created_at: string
-        sender_name: string
-    }
+    }[]
+}
 
-    export interface EmployeeProfileData {
-        profile: EmployeeProfile
-        activeTasks: EmployeeTask[]
-        completedTasks: EmployeeTask[]
-        circulars: EmployeeCircular[]
-        stats: {
-            activeCount: number
-            completedCount: number
-            circularCount: number
-            unreadCircularCount: number
-        }
-    }
+export interface EmployeeCircular {
+    id: string
+    circular_id: string
+    title: string
+    content: string
+    is_read: boolean
+    read_at: string | null
+    created_at: string
+    sender_name: string
+}
 
-    // Get employee tasks only (for lazy loading)
-    export async function getEmployeeTasksAction(employeeId: string): Promise<{ activeTasks: EmployeeTask[], completedTasks: EmployeeTask[] }> {
-        try {
-            const { data: assignments } = await supabaseAdmin
-                .from('task_assignments')
-                .select(`
+export interface EmployeeProfileData {
+    profile: EmployeeProfile
+    activeTasks: EmployeeTask[]
+    completedTasks: EmployeeTask[]
+    circulars: EmployeeCircular[]
+    stats: {
+        activeCount: number
+        completedCount: number
+        circularCount: number
+        unreadCircularCount: number
+    }
+}
+
+// Get employee tasks only (for lazy loading)
+export async function getEmployeeTasksAction(employeeId: string): Promise<{ activeTasks: EmployeeTask[], completedTasks: EmployeeTask[] }> {
+    try {
+        const { data: assignments } = await supabaseAdmin
+            .from('task_assignments')
+            .select(`
                 id, task_id, user_id, status, response_note, assigned_at, updated_at, reminder_sent_at,
                 task:tasks(id, title, description, created_at)
             `)
-                .eq('user_id', employeeId)
-                .order('assigned_at', { ascending: false })
+            .eq('user_id', employeeId)
+            .order('assigned_at', { ascending: false })
 
-            if (!assignments) return { activeTasks: [], completedTasks: [] }
+        if (!assignments) return { activeTasks: [], completedTasks: [] }
 
-            // Get comments for all tasks
-            const taskIds = assignments.map(a => a.task_id)
-            const { data: allComments } = taskIds.length > 0
-                ? await supabaseAdmin
-                    .from('task_comments')
-                    .select('id, task_id, user_id, content, created_at')
-                    .in('task_id', taskIds)
-                    .order('created_at', { ascending: true })
-                : { data: [] }
+        // Get comments for all tasks
+        const taskIds = assignments.map(a => a.task_id)
+        const { data: allComments } = taskIds.length > 0
+            ? await supabaseAdmin
+                .from('task_comments')
+                .select('id, task_id, user_id, content, created_at')
+                .in('task_id', taskIds)
+                .order('created_at', { ascending: true })
+            : { data: [] }
 
-            // Get commenter profiles
-            const commenterIds = [...new Set((allComments || []).map(c => c.user_id))]
-            const { data: commenterProfiles } = commenterIds.length > 0
-                ? await supabaseAdmin
-                    .from('profiles')
-                    .select('id, full_name, role')
-                    .in('id', commenterIds)
-                : { data: [] }
-
-            const commenterMap = new Map((commenterProfiles || []).map(p => [p.id, { name: p.full_name, role: p.role }]))
-
-            // Group comments by task
-            const commentsByTask = new Map<string, typeof allComments>()
-                ; (allComments || []).forEach(c => {
-                    const existing = commentsByTask.get(c.task_id) || []
-                    existing.push(c)
-                    commentsByTask.set(c.task_id, existing)
-                })
-
-            // Process tasks
-            const activeTasks: EmployeeTask[] = []
-            const completedTasks: EmployeeTask[] = []
-
-            assignments.forEach(a => {
-                const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
-                if (!task) return
-
-                const taskComments = commentsByTask.get(a.task_id) || []
-                const employeeTask: EmployeeTask = {
-                    id: a.id,
-                    task_id: a.task_id,
-                    user_id: a.user_id,
-                    task_title: task.title,
-                    task_description: task.description,
-                    status: a.status,
-                    assigned_at: a.assigned_at,
-                    updated_at: a.updated_at,
-                    completed_at: a.status === 'completed' ? a.updated_at : null,
-                    reminder_sent_at: a.reminder_sent_at,
-                    response_note: a.response_note,
-                    comments: taskComments.map(c => ({
-                        id: c.id,
-                        content: c.content,
-                        user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
-                        user_role: commenterMap.get(c.user_id)?.role || 'member',
-                        created_at: c.created_at
-                    }))
-                }
-
-                if (a.status === 'completed' || a.status === 'rejected') {
-                    completedTasks.push(employeeTask)
-                } else {
-                    activeTasks.push(employeeTask)
-                }
-            })
-
-            return { activeTasks, completedTasks }
-        } catch (error) {
-            console.error('Error fetching employee tasks:', error)
-            return { activeTasks: [], completedTasks: [] }
-        }
-    }
-
-    // Get employee circulars only (for lazy loading)
-    export async function getEmployeeCircularsAction(employeeId: string): Promise<EmployeeCircular[]> {
-        try {
-            const { data: circularRecipients } = await supabaseAdmin
-                .from('circular_recipients')
-                .select(`
-                id, circular_id, is_read, read_at, created_at,
-                circular:circulars(id, title, content, created_by, created_at)
-            `)
-                .eq('user_id', employeeId)
-                .order('created_at', { ascending: false })
-
-            if (!circularRecipients) return []
-
-            // Get sender profiles
-            const senderIds = [...new Set(circularRecipients.map(r => {
-                const c = r.circular as unknown as { created_by: string } | null
-                return c?.created_by
-            }).filter(Boolean) || [])]
-
-            const { data: senderProfiles } = senderIds.length > 0
-                ? await supabaseAdmin
-                    .from('profiles')
-                    .select('id, full_name')
-                    .in('id', senderIds)
-                : { data: [] }
-
-            const senderMap = new Map((senderProfiles || []).map(p => [p.id, p.full_name]))
-
-            // Process circulars
-            const circulars: EmployeeCircular[] = circularRecipients.map(r => {
-                const c = r.circular as unknown as { id: string; title: string; content: string | null; created_by: string; created_at: string } | null
-                if (!c) return null
-
-                return {
-                    id: r.id,
-                    circular_id: r.circular_id,
-                    user_id: employeeId,
-                    title: c.title,
-                    content: c.content,
-                    sender_name: senderMap.get(c.created_by) || 'Unknown',
-                    is_read: r.is_read,
-                    read_at: r.read_at,
-                    created_at: r.created_at
-                }
-            }).filter(Boolean) as EmployeeCircular[]
-
-            return circulars
-        } catch (error) {
-            console.error('Error fetching employee circulars:', error)
-            return []
-        }
-    }
-
-    // Lightweight version for initial load
-    export async function getEmployeeProfileBasicAction(employeeId: string): Promise<{ profile: EmployeeProfile | null, stats: { activeTasks: number, completedTasks: number, unreadCirculars: number } | null }> {
-        try {
-            const { data: profileData } = await supabaseAdmin
+        // Get commenter profiles
+        const commenterIds = [...new Set((allComments || []).map(c => c.user_id))]
+        const { data: commenterProfiles } = commenterIds.length > 0
+            ? await supabaseAdmin
                 .from('profiles')
-                .select('id, full_name, role, created_at')
-                .eq('id', employeeId)
-                .single()
+                .select('id, full_name, role')
+                .in('id', commenterIds)
+            : { data: [] }
 
-            if (!profileData) return { profile: null, stats: null }
+        const commenterMap = new Map((commenterProfiles || []).map(p => [p.id, { name: p.full_name, role: p.role }]))
 
-            // Get basic stats only (counts, no details)
-            const [membershipsResult, taskStats, circularStats] = await Promise.all([
-                supabaseAdmin.from('group_members').select('group:groups(id, name)').eq('user_id', employeeId),
-                supabaseAdmin.from('task_assignments')
-                    .select('status', { count: 'exact' })
-                    .eq('user_id', employeeId),
-                supabaseAdmin.from('circular_recipients')
-                    .select('is_read', { count: 'exact' })
-                    .eq('user_id', employeeId)
-                    .eq('is_read', false)
-            ])
-
-            const groups = (membershipsResult.data || []).map(m => {
-                const group = m.group as unknown as { id: string; name: string } | null
-                return group ? { id: group.id, name: group.name } : null
-            }).filter(Boolean) as { id: string; name: string }[]
-
-            const profile: EmployeeProfile = {
-                id: employeeId,
-                full_name: profileData.full_name || null,
-                email: '',
-                role: profileData.role || 'member',
-                created_at: profileData.created_at,
-                groups
-            }
-
-            // Calculate stats from the data
-            const taskData = taskStats.data || []
-            const activeTasks = taskData.filter(t => t.status === 'pending' || t.status === 'in_progress').length
-            const completedTasks = taskData.filter(t => t.status === 'completed').length
-            const unreadCirculars = circularStats.count || 0
-
-            return {
-                profile,
-                stats: {
-                    activeTasks,
-                    completedTasks,
-                    unreadCirculars
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching employee profile basic:', error)
-            return { profile: null, stats: null }
-        }
-    }
-
-    export async function getEmployeeProfileAction(employeeId: string): Promise<EmployeeProfileData | null> {
-        try {
-            // STEP 1: Get profile first (to check if exists)
-            const { data: profileData } = await supabaseAdmin
-                .from('profiles')
-                .select('id, full_name, role, created_at')
-                .eq('id', employeeId)
-                .single()
-
-            if (!profileData) return null
-
-            // STEP 2: PARALLEL loading for all data! 🚀
-            const [membershipsResult, assignmentsResult, circularsResult] = await Promise.all([
-                supabaseAdmin.from('group_members').select('group:groups(id, name)').eq('user_id', employeeId),
-                supabaseAdmin.from('task_assignments').select(`
-                id, task_id, user_id, status, response_note, assigned_at, updated_at, reminder_sent_at,
-                task:tasks(id, title, description, created_at)
-            `).eq('user_id', employeeId).order('assigned_at', { ascending: false }),
-                supabaseAdmin.from('circular_recipients').select(`
-                id, circular_id, is_read, read_at, created_at,
-                circular:circulars(id, title, content, created_by, created_at)
-            `).eq('user_id', employeeId).order('created_at', { ascending: false })
-            ])
-
-            const memberships = membershipsResult.data || []
-            const assignments = assignmentsResult.data || []
-            const circularRecipients = circularsResult.data || []
-
-            // Process groups
-            const groups = memberships.map(m => {
-                const group = m.group as unknown as { id: string; name: string } | null
-                return group ? { id: group.id, name: group.name } : null
-            }).filter(Boolean) as { id: string; name: string }[]
-
-            const profile: EmployeeProfile = {
-                id: employeeId,
-                full_name: profileData.full_name || null,
-                email: '',
-                role: profileData.role || 'member',
-                created_at: profileData.created_at,
-                groups
-            }
-
-            // STEP 3: Get comments and sender profiles in parallel
-            const taskIds = assignments.map(a => a.task_id)
-            const senderIds = [...new Set(circularRecipients.map(r => {
-                const c = r.circular as unknown as { created_by: string } | null
-                return c?.created_by
-            }).filter(Boolean) || [])]
-
-            const [commentsResult, senderProfilesResult] = await Promise.all([
-                taskIds.length > 0
-                    ? supabaseAdmin.from('task_comments').select('id, task_id, user_id, content, created_at').in('task_id', taskIds).order('created_at', { ascending: true })
-                    : Promise.resolve({ data: [] }),
-                senderIds.length > 0
-                    ? supabaseAdmin.from('profiles').select('id, full_name').in('id', senderIds)
-                    : Promise.resolve({ data: [] })
-            ])
-
-            const allComments = commentsResult.data || []
-            const senderProfiles = senderProfilesResult.data || []
-
-            // Get commenter profiles (if we have comments)
-            const commenterIds = [...new Set(allComments.map(c => c.user_id))]
-            const commenterProfiles = commenterIds.length > 0
-                ? (await supabaseAdmin.from('profiles').select('id, full_name, role').in('id', commenterIds)).data || []
-                : []
-
-            const commenterMap = new Map(commenterProfiles.map(p => [p.id, { name: p.full_name, role: p.role }]))
-            const senderMap = new Map(senderProfiles.map(p => [p.id, p.full_name]))
-
-            // Group comments by task
-            const commentsByTask = new Map<string, typeof allComments>()
-            allComments.forEach(c => {
+        // Group comments by task
+        const commentsByTask = new Map<string, typeof allComments>()
+            ; (allComments || []).forEach(c => {
                 const existing = commentsByTask.get(c.task_id) || []
                 existing.push(c)
                 commentsByTask.set(c.task_id, existing)
             })
 
-            // Process tasks
-            const activeTasks: EmployeeTask[] = []
-            const completedTasks: EmployeeTask[] = []
+        // Process tasks
+        const activeTasks: EmployeeTask[] = []
+        const completedTasks: EmployeeTask[] = []
 
-            assignments.forEach(a => {
-                const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
-                if (!task) return
+        assignments.forEach(a => {
+            const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
+            if (!task) return
 
-                const taskComments = commentsByTask.get(a.task_id) || []
-                const employeeTask: EmployeeTask = {
-                    id: a.id,
-                    task_id: a.task_id,
-                    user_id: a.user_id,
-                    task_title: task.title,
-                    task_description: task.description,
-                    status: a.status,
-                    assigned_at: a.assigned_at,
-                    updated_at: a.updated_at,
-                    completed_at: a.status === 'completed' ? a.updated_at : null,
-                    reminder_sent_at: (a as any).reminder_sent_at || null,
-                    response_note: a.response_note,
-                    comments: taskComments.map(c => ({
-                        id: c.id,
-                        content: c.content,
-                        user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
-                        user_role: commenterMap.get(c.user_id)?.role || 'member',
-                        created_at: c.created_at
-                    }))
-                }
-
-                if (a.status === 'completed') {
-                    completedTasks.push(employeeTask)
-                } else {
-                    activeTasks.push(employeeTask)
-                }
-            })
-
-            const circulars: EmployeeCircular[] = circularRecipients?.map(r => {
-                const c = r.circular as unknown as { id: string; title: string; content: string; created_by: string; created_at: string } | null
-                if (!c) return null
-                return {
-                    id: r.id,
-                    circular_id: r.circular_id,
-                    title: c.title,
+            const taskComments = commentsByTask.get(a.task_id) || []
+            const employeeTask: EmployeeTask = {
+                id: a.id,
+                task_id: a.task_id,
+                user_id: a.user_id,
+                task_title: task.title,
+                task_description: task.description,
+                status: a.status,
+                assigned_at: a.assigned_at,
+                updated_at: a.updated_at,
+                completed_at: a.status === 'completed' ? a.updated_at : null,
+                reminder_sent_at: a.reminder_sent_at,
+                response_note: a.response_note,
+                comments: taskComments.map(c => ({
+                    id: c.id,
                     content: c.content,
-                    is_read: r.is_read,
-                    read_at: r.read_at,
-                    created_at: r.created_at,
-                    sender_name: senderMap.get(c.created_by) || 'مدير النظام'
-                }
-            }).filter(Boolean) as EmployeeCircular[] || []
-
-            // 4. Calculate stats
-            const stats = {
-                activeCount: activeTasks.length,
-                completedCount: completedTasks.length,
-                circularCount: circulars.length,
-                unreadCircularCount: circulars.filter(c => !c.is_read).length
+                    user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
+                    user_role: commenterMap.get(c.user_id)?.role || 'member',
+                    created_at: c.created_at
+                }))
             }
 
+            if (a.status === 'completed' || a.status === 'rejected') {
+                completedTasks.push(employeeTask)
+            } else {
+                activeTasks.push(employeeTask)
+            }
+        })
+
+        return { activeTasks, completedTasks }
+    } catch (error) {
+        console.error('Error fetching employee tasks:', error)
+        return { activeTasks: [], completedTasks: [] }
+    }
+}
+
+// Get employee circulars only (for lazy loading)
+export async function getEmployeeCircularsAction(employeeId: string): Promise<EmployeeCircular[]> {
+    try {
+        const { data: circularRecipients } = await supabaseAdmin
+            .from('circular_recipients')
+            .select(`
+                id, circular_id, is_read, read_at, created_at,
+                circular:circulars(id, title, content, created_by, created_at)
+            `)
+            .eq('user_id', employeeId)
+            .order('created_at', { ascending: false })
+
+        if (!circularRecipients) return []
+
+        // Get sender profiles
+        const senderIds = [...new Set(circularRecipients.map(r => {
+            const c = r.circular as unknown as { created_by: string } | null
+            return c?.created_by
+        }).filter(Boolean) || [])]
+
+        const { data: senderProfiles } = senderIds.length > 0
+            ? await supabaseAdmin
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', senderIds)
+            : { data: [] }
+
+        const senderMap = new Map((senderProfiles || []).map(p => [p.id, p.full_name]))
+
+        // Process circulars
+        const circulars: EmployeeCircular[] = circularRecipients.map(r => {
+            const c = r.circular as unknown as { id: string; title: string; content: string | null; created_by: string; created_at: string } | null
+            if (!c) return null
+
             return {
-                profile,
+                id: r.id,
+                circular_id: r.circular_id,
+                user_id: employeeId,
+                title: c.title,
+                content: c.content,
+                sender_name: senderMap.get(c.created_by) || 'Unknown',
+                is_read: r.is_read,
+                read_at: r.read_at,
+                created_at: r.created_at
+            }
+        }).filter(Boolean) as EmployeeCircular[]
+
+        return circulars
+    } catch (error) {
+        console.error('Error fetching employee circulars:', error)
+        return []
+    }
+}
+
+// Lightweight version for initial load
+export async function getEmployeeProfileBasicAction(employeeId: string): Promise<{ profile: EmployeeProfile | null, stats: { activeTasks: number, completedTasks: number, unreadCirculars: number } | null }> {
+    try {
+        const { data: profileData } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, role, created_at')
+            .eq('id', employeeId)
+            .single()
+
+        if (!profileData) return { profile: null, stats: null }
+
+        // Get basic stats only (counts, no details)
+        const [membershipsResult, taskStats, circularStats] = await Promise.all([
+            supabaseAdmin.from('group_members').select('group:groups(id, name)').eq('user_id', employeeId),
+            supabaseAdmin.from('task_assignments')
+                .select('status', { count: 'exact' })
+                .eq('user_id', employeeId),
+            supabaseAdmin.from('circular_recipients')
+                .select('is_read', { count: 'exact' })
+                .eq('user_id', employeeId)
+                .eq('is_read', false)
+        ])
+
+        const groups = (membershipsResult.data || []).map(m => {
+            const group = m.group as unknown as { id: string; name: string } | null
+            return group ? { id: group.id, name: group.name } : null
+        }).filter(Boolean) as { id: string; name: string }[]
+
+        const profile: EmployeeProfile = {
+            id: employeeId,
+            full_name: profileData.full_name || null,
+            email: '',
+            role: profileData.role || 'member',
+            created_at: profileData.created_at,
+            groups
+        }
+
+        // Calculate stats from the data
+        const taskData = taskStats.data || []
+        const activeTasks = taskData.filter(t => t.status === 'pending' || t.status === 'in_progress').length
+        const completedTasks = taskData.filter(t => t.status === 'completed').length
+        const unreadCirculars = circularStats.count || 0
+
+        return {
+            profile,
+            stats: {
                 activeTasks,
                 completedTasks,
-                circulars,
-                stats
+                unreadCirculars
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching employee profile basic:', error)
+        return { profile: null, stats: null }
+    }
+}
+
+export async function getEmployeeProfileAction(employeeId: string): Promise<EmployeeProfileData | null> {
+    try {
+        // STEP 1: Get profile first (to check if exists)
+        const { data: profileData } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, role, created_at')
+            .eq('id', employeeId)
+            .single()
+
+        if (!profileData) return null
+
+        // STEP 2: PARALLEL loading for all data! 🚀
+        const [membershipsResult, assignmentsResult, circularsResult] = await Promise.all([
+            supabaseAdmin.from('group_members').select('group:groups(id, name)').eq('user_id', employeeId),
+            supabaseAdmin.from('task_assignments').select(`
+                id, task_id, user_id, status, response_note, assigned_at, updated_at, reminder_sent_at,
+                task:tasks(id, title, description, created_at)
+            `).eq('user_id', employeeId).order('assigned_at', { ascending: false }),
+            supabaseAdmin.from('circular_recipients').select(`
+                id, circular_id, is_read, read_at, created_at,
+                circular:circulars(id, title, content, created_by, created_at)
+            `).eq('user_id', employeeId).order('created_at', { ascending: false })
+        ])
+
+        const memberships = membershipsResult.data || []
+        const assignments = assignmentsResult.data || []
+        const circularRecipients = circularsResult.data || []
+
+        // Process groups
+        const groups = memberships.map(m => {
+            const group = m.group as unknown as { id: string; name: string } | null
+            return group ? { id: group.id, name: group.name } : null
+        }).filter(Boolean) as { id: string; name: string }[]
+
+        const profile: EmployeeProfile = {
+            id: employeeId,
+            full_name: profileData.full_name || null,
+            email: '',
+            role: profileData.role || 'member',
+            created_at: profileData.created_at,
+            groups
+        }
+
+        // STEP 3: Get comments and sender profiles in parallel
+        const taskIds = assignments.map(a => a.task_id)
+        const senderIds = [...new Set(circularRecipients.map(r => {
+            const c = r.circular as unknown as { created_by: string } | null
+            return c?.created_by
+        }).filter(Boolean) || [])]
+
+        const [commentsResult, senderProfilesResult] = await Promise.all([
+            taskIds.length > 0
+                ? supabaseAdmin.from('task_comments').select('id, task_id, user_id, content, created_at').in('task_id', taskIds).order('created_at', { ascending: true })
+                : Promise.resolve({ data: [] }),
+            senderIds.length > 0
+                ? supabaseAdmin.from('profiles').select('id, full_name').in('id', senderIds)
+                : Promise.resolve({ data: [] })
+        ])
+
+        const allComments = commentsResult.data || []
+        const senderProfiles = senderProfilesResult.data || []
+
+        // Get commenter profiles (if we have comments)
+        const commenterIds = [...new Set(allComments.map(c => c.user_id))]
+        const commenterProfiles = commenterIds.length > 0
+            ? (await supabaseAdmin.from('profiles').select('id, full_name, role').in('id', commenterIds)).data || []
+            : []
+
+        const commenterMap = new Map(commenterProfiles.map(p => [p.id, { name: p.full_name, role: p.role }]))
+        const senderMap = new Map(senderProfiles.map(p => [p.id, p.full_name]))
+
+        // Group comments by task
+        const commentsByTask = new Map<string, typeof allComments>()
+        allComments.forEach(c => {
+            const existing = commentsByTask.get(c.task_id) || []
+            existing.push(c)
+            commentsByTask.set(c.task_id, existing)
+        })
+
+        // Process tasks
+        const activeTasks: EmployeeTask[] = []
+        const completedTasks: EmployeeTask[] = []
+
+        assignments.forEach(a => {
+            const task = a.task as unknown as { id: string; title: string; description: string | null; created_at: string } | null
+            if (!task) return
+
+            const taskComments = commentsByTask.get(a.task_id) || []
+            const employeeTask: EmployeeTask = {
+                id: a.id,
+                task_id: a.task_id,
+                user_id: a.user_id,
+                task_title: task.title,
+                task_description: task.description,
+                status: a.status,
+                assigned_at: a.assigned_at,
+                updated_at: a.updated_at,
+                completed_at: a.status === 'completed' ? a.updated_at : null,
+                reminder_sent_at: (a as any).reminder_sent_at || null,
+                response_note: a.response_note,
+                comments: taskComments.map(c => ({
+                    id: c.id,
+                    content: c.content,
+                    user_name: commenterMap.get(c.user_id)?.name || 'مستخدم',
+                    user_role: commenterMap.get(c.user_id)?.role || 'member',
+                    created_at: c.created_at
+                }))
             }
 
-        } catch (error) {
-            console.error('Get employee profile error:', error)
-            return null
-        }
-    }
-
-    // Mark assignment as completed (admin action)
-    export async function markAssignmentCompletedAction(assignmentId: string): Promise<{ success: boolean }> {
-        try {
-            await supabaseAdmin
-                .from('task_assignments')
-                .update({
-                    status: 'completed',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', assignmentId)
-
-            revalidatePath('/dashboard')
-            return { success: true }
-        } catch (error) {
-            console.error('Mark assignment completed error:', error)
-            return { success: false }
-        }
-    }
-
-    // Send task reminder email
-    export async function sendTaskReminderAction(
-        assignmentId: string,
-        employeeId: string,
-        taskTitle: string
-    ): Promise<{ success: boolean; error?: string }> {
-        try {
-            // Get employee email - getUserById instead of listUsers! 🚀
-            const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(employeeId)
-
-            if (error || !user?.email) {
-                return { success: false, error: 'البريد الإلكتروني غير موجود' }
+            if (a.status === 'completed') {
+                completedTasks.push(employeeTask)
+            } else {
+                activeTasks.push(employeeTask)
             }
+        })
 
-            // Get employee name
-            const { data: profile } = await supabaseAdmin
-                .from('profiles')
-                .select('full_name')
-                .eq('id', employeeId)
-                .single()
-
-            const employeeName = profile?.full_name || 'الموظف'
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
-            // Import sendTaskEmail dynamically to avoid circular dependency
-            const { sendTaskEmail } = await import('./email')
-
-            // Send reminder email
-            await sendTaskEmail({
-                to: user.email,
-                recipientName: employeeName,
-                taskTitle: `تذكير: ${taskTitle}`,
-                taskDescription: 'لديك مهمة معلقة تحتاج إلى إنجازها. يرجى مراجعة المهمة والرد عليها في أقرب وقت.',
-                priority: 'high',
-                assignerName: 'مدير النظام',
-                dashboardUrl: `${appUrl}/dashboard`
-            })
-
-            // Update assignment with reminder timestamp
-            await supabaseAdmin
-                .from('task_assignments')
-                .update({
-                    reminder_sent_at: new Date().toISOString()
-                })
-                .eq('id', assignmentId)
-
-            // Create notification
-            await supabaseAdmin.from('notifications').insert({
-                user_id: employeeId,
-                message: `تذكير: لديك مهمة معلقة "${taskTitle}"`,
-                is_read: false
-            })
-
-            revalidatePath('/dashboard')
-            return { success: true }
-
-        } catch (error) {
-            console.error('Send task reminder error:', error)
-            return { success: false, error: 'فشل في إرسال التذكير' }
-        }
-    }
-
-    // ============== ACCOUNT SUSPENSION ==============
-
-    export async function suspendAccountAction(userId: string, adminId: string): Promise<{ success: boolean; error?: string }> {
-        try {
-            const { error } = await supabaseAdmin
-                .from('profiles')
-                .update({
-                    is_active: false,
-                    deactivated_at: new Date().toISOString(),
-                    deactivated_by: adminId
-                })
-                .eq('id', userId)
-
-            if (error) {
-                console.error('Suspend account error:', error)
-                return { success: false, error: error.message }
-            }
-
-            revalidatePath('/dashboard/staff')
-            return { success: true }
-
-        } catch (error) {
-            console.error('Suspend account error:', error)
-            return { success: false, error: 'فشل في إيقاف الحساب' }
-        }
-    }
-
-    export async function activateAccountAction(userId: string): Promise<{ success: boolean; error?: string }> {
-        try {
-            const { error } = await supabaseAdmin
-                .from('profiles')
-                .update({
-                    is_active: true,
-                    deactivated_at: null,
-                    deactivated_by: null
-                })
-                .eq('id', userId)
-
-            if (error) {
-                console.error('Activate account error:', error)
-                return { success: false, error: error.message }
-            }
-
-            revalidatePath('/dashboard/staff')
-            return { success: true }
-
-        } catch (error) {
-            console.error('Activate account error:', error)
-            return { success: false, error: 'فشل في تنشيط الحساب' }
-        }
-    }
-
-    export async function getAccountStatusAction(userId: string): Promise<{ is_active: boolean; deactivated_at: string | null }> {
-        try {
-            const { data } = await supabaseAdmin
-                .from('profiles')
-                .select('is_active, deactivated_at')
-                .eq('id', userId)
-                .single()
-
+        const circulars: EmployeeCircular[] = circularRecipients?.map(r => {
+            const c = r.circular as unknown as { id: string; title: string; content: string; created_by: string; created_at: string } | null
+            if (!c) return null
             return {
-                is_active: data?.is_active ?? true,
-                deactivated_at: data?.deactivated_at || null
+                id: r.id,
+                circular_id: r.circular_id,
+                title: c.title,
+                content: c.content,
+                is_read: r.is_read,
+                read_at: r.read_at,
+                created_at: r.created_at,
+                sender_name: senderMap.get(c.created_by) || 'مدير النظام'
             }
-        } catch {
-            return { is_active: true, deactivated_at: null }
+        }).filter(Boolean) as EmployeeCircular[] || []
+
+        // 4. Calculate stats
+        const stats = {
+            activeCount: activeTasks.length,
+            completedCount: completedTasks.length,
+            circularCount: circulars.length,
+            unreadCircularCount: circulars.filter(c => !c.is_read).length
         }
+
+        return {
+            profile,
+            activeTasks,
+            completedTasks,
+            circulars,
+            stats
+        }
+
+    } catch (error) {
+        console.error('Get employee profile error:', error)
+        return null
     }
+}
+
+// Mark assignment as completed (admin action)
+export async function markAssignmentCompletedAction(assignmentId: string): Promise<{ success: boolean }> {
+    try {
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                status: 'completed',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        revalidatePath('/dashboard')
+        return { success: true }
+    } catch (error) {
+        console.error('Mark assignment completed error:', error)
+        return { success: false }
+    }
+}
+
+// Send task reminder email
+export async function sendTaskReminderAction(
+    assignmentId: string,
+    employeeId: string,
+    taskTitle: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        // Get employee email - getUserById instead of listUsers! 🚀
+        const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(employeeId)
+
+        if (error || !user?.email) {
+            return { success: false, error: 'البريد الإلكتروني غير موجود' }
+        }
+
+        // Get employee name
+        const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('full_name')
+            .eq('id', employeeId)
+            .single()
+
+        const employeeName = profile?.full_name || 'الموظف'
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+        // Import sendTaskEmail dynamically to avoid circular dependency
+        const { sendTaskEmail } = await import('./email')
+
+        // Send reminder email
+        await sendTaskEmail({
+            to: user.email,
+            recipientName: employeeName,
+            taskTitle: `تذكير: ${taskTitle}`,
+            taskDescription: 'لديك مهمة معلقة تحتاج إلى إنجازها. يرجى مراجعة المهمة والرد عليها في أقرب وقت.',
+            priority: 'high',
+            assignerName: 'مدير النظام',
+            dashboardUrl: `${appUrl}/dashboard`
+        })
+
+        // Update assignment with reminder timestamp
+        await supabaseAdmin
+            .from('task_assignments')
+            .update({
+                reminder_sent_at: new Date().toISOString()
+            })
+            .eq('id', assignmentId)
+
+        // Create notification
+        await supabaseAdmin.from('notifications').insert({
+            user_id: employeeId,
+            message: `تذكير: لديك مهمة معلقة "${taskTitle}"`,
+            is_read: false
+        })
+
+        revalidatePath('/dashboard')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Send task reminder error:', error)
+        return { success: false, error: 'فشل في إرسال التذكير' }
+    }
+}
+
+// ============== ACCOUNT SUSPENSION ==============
+
+export async function suspendAccountAction(userId: string, adminId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .update({
+                is_active: false,
+                deactivated_at: new Date().toISOString(),
+                deactivated_by: adminId
+            })
+            .eq('id', userId)
+
+        if (error) {
+            console.error('Suspend account error:', error)
+            return { success: false, error: error.message }
+        }
+
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Suspend account error:', error)
+        return { success: false, error: 'فشل في إيقاف الحساب' }
+    }
+}
+
+export async function activateAccountAction(userId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { error } = await supabaseAdmin
+            .from('profiles')
+            .update({
+                is_active: true,
+                deactivated_at: null,
+                deactivated_by: null
+            })
+            .eq('id', userId)
+
+        if (error) {
+            console.error('Activate account error:', error)
+            return { success: false, error: error.message }
+        }
+
+        revalidatePath('/dashboard/staff')
+        return { success: true }
+
+    } catch (error) {
+        console.error('Activate account error:', error)
+        return { success: false, error: 'فشل في تنشيط الحساب' }
+    }
+}
+
+export async function getAccountStatusAction(userId: string): Promise<{ is_active: boolean; deactivated_at: string | null }> {
+    try {
+        const { data } = await supabaseAdmin
+            .from('profiles')
+            .select('is_active, deactivated_at')
+            .eq('id', userId)
+            .single()
+
+        return {
+            is_active: data?.is_active ?? true,
+            deactivated_at: data?.deactivated_at || null
+        }
+    } catch {
+        return { is_active: true, deactivated_at: null }
+    }
+}
