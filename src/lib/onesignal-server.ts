@@ -27,48 +27,61 @@ export async function sendPushNotificationAction(options: SendNotificationOption
     }
 
     try {
-        console.log(`[OneSignal] Sending notification to ${userIds.length} users`)
-        
+        console.log(`[OneSignal] ====== NOTIFICATION SEND START ======`)
+        console.log(`[OneSignal] API Key Length: ${ONESIGNAL_REST_API_KEY.length}`)
+        console.log(`[OneSignal] App ID: ${ONESIGNAL_APP_ID}`)
+        console.log(`[OneSignal] User IDs (${userIds.length}):`, userIds)
+        console.log(`[OneSignal] Title: ${title}`)
+        console.log(`[OneSignal] Body: ${body}`)
+
+        const requestBody = {
+            app_id: ONESIGNAL_APP_ID,
+            // Use include_aliases with external_id (correct format for OneSignal v16)
+            include_aliases: {
+                external_id: userIds  // Array of user IDs
+            },
+            target_channel: 'push',
+            headings: { ar: title, en: title },
+            contents: { ar: body, en: body },
+            url: url || 'https://harmuni.org/dashboard',
+            data: data || {},
+            // iOS specific
+            ios_badgeType: 'Increase',
+            ios_badgeCount: 1,
+            // Web push specific
+            web_url: url || 'https://harmuni.org/dashboard',
+            // Priority
+            priority: 10
+        }
+
+        console.log('[OneSignal] Request Body:', JSON.stringify(requestBody, null, 2))
+
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
             method: 'POST',
             headers: {
                 'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                app_id: ONESIGNAL_APP_ID,
-                // Use include_aliases with external_id (correct format for OneSignal v16)
-                include_aliases: {
-                    external_id: userIds  // Array of user IDs
-                },
-                target_channel: 'push',
-                headings: { ar: title, en: title },
-                contents: { ar: body, en: body },
-                url: url || 'https://harmuni.org/dashboard',
-                data: data || {},
-                // iOS specific
-                ios_badgeType: 'Increase',
-                ios_badgeCount: 1,
-                // Web push specific
-                web_url: url || 'https://harmuni.org/dashboard',
-                // Priority
-                priority: 10
-            })
+            body: JSON.stringify(requestBody)
         })
 
+        console.log('[OneSignal] Response Status:', response.status, response.statusText)
         const result = await response.json()
+        console.log('[OneSignal] Response Body:', JSON.stringify(result, null, 2))
 
         if (!response.ok) {
-            console.error('[OneSignal] API Error Response:', JSON.stringify(result, null, 2))
+            console.error('[OneSignal] ❌ API Error Response:', JSON.stringify(result, null, 2))
             const errorMsg = result.errors?.[0] || result.error || 'Unknown error'
             return { success: false, error: errorMsg }
         }
 
-        console.log('[OneSignal] Success! Notification ID:', result.id, 'Recipients:', result.recipients)
+        console.log('[OneSignal] ✅ Success! Notification ID:', result.id, 'Recipients:', result.recipients)
+        console.log(`[OneSignal] ====== NOTIFICATION SEND END ======`)
         return { success: true }
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Network error'
-        console.error('[OneSignal] Exception:', errorMessage)
+        console.error('[OneSignal] ❌ Exception:', errorMessage)
+        console.error('[OneSignal] Exception Details:', error)
         return { success: false, error: errorMessage }
     }
 }

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import useSWR, { mutate } from 'swr'
 import { createSupabaseBrowser } from '@/lib/supabase-browser'
 import { useAuth } from '@/lib/auth-context'
+import { useOneSignal } from '@/lib/onesignal'
 import { Profile, Task, TaskAssignment, Notification } from '@/lib/supabase'
 import { CreateTaskDrawer } from '@/components/create-task-drawer'
 import { CreateCircularDrawer } from '@/components/create-circular-drawer'
@@ -105,6 +106,19 @@ export default function DashboardPage() {
 
     const isAdmin = profile?.role === 'admin'
     const userId = user?.id || null
+
+    // ✅ OneSignal: Register External ID globally for ALL users on dashboard load
+    const { isLoaded: isOneSignalLoaded, setExternalUserId } = useOneSignal()
+
+    useEffect(() => {
+        // Register user's Supabase UUID as External ID in OneSignal
+        // This enables targeted push notifications for task assignments
+        if (isOneSignalLoaded && user?.id) {
+            console.log('[Dashboard] Registering OneSignal External ID:', user.id)
+            setExternalUserId(user.id, user.email)
+        }
+    }, [isOneSignalLoaded, user?.id, user?.email, setExternalUserId])
+
 
     // SWR Hooks - تحميل البيانات مع التخزين المؤقت 🚀
     const { data: employeesData, error: employeesError } = useEmployeesWithStats()

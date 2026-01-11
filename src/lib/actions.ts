@@ -178,14 +178,17 @@ export async function createTaskAction(input: CreateTaskInput): Promise<CreateTa
             }
 
             // 5b. Send push notifications via OneSignal
-            sendPushNotificationAction({
-                userIds: userIds,
-                title: 'مهمة جديدة 📋',
-                body: `تم تعيين مهمة لك: ${title}`,
-                url: `https://harmuni.org/dashboard/tasks/${task.id}`
-            }).catch(err => {
-                console.error('[Push] Error:', err)
-            })
+            try {
+                const pushResult = await sendPushNotificationAction({
+                    userIds: userIds,
+                    title: 'مهمة جديدة 📋',
+                    body: `تم تعيين مهمة لك: ${title}`,
+                    url: `https://harmuni.org/dashboard/tasks/${task.id}`
+                })
+                console.log('[Push] Notification result:', pushResult)
+            } catch (err) {
+                console.error('[Push] Critical error:', err)
+            }
         }
 
         // 6. Revalidate paths
